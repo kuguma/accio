@@ -24,6 +24,23 @@ f_url = font(F + r'\CascadiaMono.ttf', 26)
 
 im = Image.new('RGB', (W, H), PAPER)
 d = ImageDraw.Draw(im)
+SS = 4  # 図形は 4 倍で描いて縮小し、縁を滑らかにする
+
+def rounded_mask(size, radius, width=0):
+    """角丸長方形のマスク（width > 0 なら枠線だけ）。SS 倍で描いて縮小する"""
+    w, h = size
+    m = Image.new('L', (w * SS, h * SS), 0)
+    md = ImageDraw.Draw(m)
+    if width > 0:
+        md.rounded_rectangle((0, 0, w * SS - 1, h * SS - 1), radius=radius * SS, outline=255, width=width * SS)
+    else:
+        md.rounded_rectangle((0, 0, w * SS - 1, h * SS - 1), radius=radius * SS, fill=255)
+    return m.resize((w, h), Image.Resampling.LANCZOS)
+
+def rounded_outline(box, radius, width, color):
+    x0, y0, x1, y1 = [int(round(v)) for v in box]
+    m = rounded_mask((x1 - x0 + 1, y1 - y0 + 1), radius, width)
+    im.paste(Image.new('RGB', m.size, color), (x0, y0), m)
 
 # 左上: ロゴ + ワードマーク
 logo = Image.open(R + r'\docs\images\logo.png').convert('RGBA')
@@ -57,7 +74,7 @@ for c in chips:
     tw = d.textlength(c, font=f_chip)
     if x + tw + 40 > W - 80:
         x = 424; y += ch + 14
-    d.rounded_rectangle((x, y, x + tw + 40, y + ch), radius=ch // 2, outline=INK, width=2)
+    rounded_outline((x, y, x + tw + 40, y + ch), ch // 2, 2, INK)
     d.text((x + 20, y + ch / 2), c, font=f_chip, fill=INK, anchor='lm')
     x += tw + 40 + 14
 
@@ -74,8 +91,7 @@ cd = ImageDraw.Draw(card)
 cd.text((16, 7), 'accio', font=font(F + r'\YuGothM.ttc', 18, 1), fill=MUTE)
 cd.rectangle((0, bar - 1, sw, bar - 1), fill=(210, 209, 204))
 radius = 18
-mask = Image.new('L', card.size, 0)
-ImageDraw.Draw(mask).rounded_rectangle((0, 0, sw, sh + bar), radius=radius, fill=255)
+mask = rounded_mask(card.size, radius)
 cx, cy = (W - sw) // 2, 470
 shadow = Image.new('RGBA', (W, H), (0, 0, 0, 0))
 sd = ImageDraw.Draw(shadow)
@@ -84,7 +100,7 @@ shadow = shadow.filter(ImageFilter.GaussianBlur(22))
 im.paste(shadow, (0, 0), shadow)
 im.paste(card, (cx, cy), mask)
 d = ImageDraw.Draw(im)
-d.rounded_rectangle((cx, cy, cx + sw, cy + sh + bar), radius=radius, outline=(200, 199, 194), width=1)
+rounded_outline((cx, cy, cx + sw - 1, cy + sh + bar - 1), radius, 1, (200, 199, 194))
 
 # URL（右上）
 url = 'github.com/kuguma/accio'
