@@ -164,6 +164,14 @@ fn main() -> eframe::Result<()> {
     let pre_settings = settings::Settings::load(&data_dir().join("accio.ini"));
     // UI が別プロセスのインデクサを参照する構成では UI は昇格しない
     let follow_indexer = !pre.indexer && pre_settings.bool("use_indexer", false);
+    // 二重起動: 起動中のインスタンスへコマンドラインを転送して終了する（Everything と同じ振る舞い）。
+    // 昇格より先に行う（`-exit` や `es:` URL、Explorer のメニューから UAC を出さないため。転送先が昇格済みでも UIPI の許可で届く）
+    if !pre.new_window && !pre.startup && !pre.indexer {
+        let args: Vec<String> = std::env::args().skip(1).collect();
+        if ipc::forward_to_running(&pre.instance, &args) {
+            return Ok(());
+        }
+    }
     if !elevated && !follow_indexer && std::env::var_os("ACCIO_NO_ELEVATE").is_none()
         && elevation::relaunch_elevated() {
             return Ok(());
@@ -233,13 +241,6 @@ fn main() -> eframe::Result<()> {
     let mut cli = parse_cli();
     if cli.indexer && cli.instance.is_none() {
         cli.instance = Some("accio-indexer".into());
-    }
-    // 二重起動: 起動中のインスタンスへコマンドラインを転送して終了する（Everything と同じ振る舞い）
-    if !cli.new_window && !cli.startup && !cli.indexer {
-        let args: Vec<String> = std::env::args().skip(1).collect();
-        if ipc::forward_to_running(&cli.instance, &args) {
-            return Ok(());
-        }
     }
     let dir = data_dir();
     std::fs::create_dir_all(&dir).ok();
