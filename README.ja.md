@@ -28,6 +28,23 @@ Everything は Windows で最速のファイル検索ですが、大きなボリ
 - **Everything 互換。** 検索構文（修飾子・関数・マクロ・日付・サイズ・`dupe:`・`content:`・`type:` …）、IPC v1/v2（`es.exe` がそのまま使える）、IPC v3（SDK 3 の名前付きパイプ）、HTTP サーバー、ETP/FTP サーバー、`es:` URL プロトコル、EFU ファイルリスト。
 - **Everything を越える。** 容量ビュー（大きいフォルダ/ファイル）、ReFS / Dev Drive、初回スキャン中の検索、権限分離インデクサ、ダイアクリティカルマークの折り畳み、件数上限なしのソート。
 
+## 性能
+
+作者の環境で Everything 1.4.1.1024 と比較しました。どちらも同じ 6 つの NTFS ボリューム（約 2,000 万件のファイルとフォルダ。Ryzen 9 7950X、128 GB RAM、NVMe SSD と SATA HDD、Windows 11）を索引しています。両方とも公式の `es.exe -get-result-count` で同じ方法で測り（プロセス起動の約 40 ms を含む実時間）、7 回の最良値です。
+
+| | Everything 1.4 | accio 0.1 |
+|---|---:|---:|
+| 起動 → 検索可能（保存済み索引、キャッシュ温） | 6.4 秒 | 2.0 秒 |
+| `report` | 92 ms | 45 ms |
+| `windows update` | 100 ms | 61 ms |
+| `ext:pdf` | 45 ms | 44 ms |
+| `*.dll` | 53 ms | 84 ms |
+| `regex:^lib.*\.a$` | 545 ms | 84 ms |
+| `x`（270 万件ヒット） | 91 ms | 113 ms |
+| 空のクエリ（全 2,000 万件） | 87 ms | 237 ms |
+
+ワイルドカードだけ・1 文字・空のクエリなど、Everything のほうが速い形のクエリもまだあります。accio の狙いはすべてのクエリで勝つことではなく、UI を決して待たせないことです。上の数値はウィンドウが応答し続けたまま IPC 経由で測ったもので、検索はすべてワーカースレッドで走るためウィンドウが検索を待つことはありません。
+
 ## インストール
 
 [最新リリース](https://github.com/kuguma/accio/releases)から `accio.exe` をダウンロードして実行します。初回起動時に昇格（UAC）を求めます（MFT と USN ジャーナルの読み取りに管理者権限が要るため）。固定ディスクの NTFS/ReFS ボリュームを一度スキャンしたあとはトレイに常駐します。設定と索引は `%LOCALAPPDATA%\accio` に置かれます。
@@ -62,3 +79,7 @@ accio は 0.x です。UI は日本語と英語に対応しています（Window
 ## ライセンス
 
 MIT（[LICENSE](LICENSE)）。`testdata/` の NTFS テストイメージは [ntfs](https://github.com/ColinFinck/ntfs) クレート（MIT / Apache-2.0）由来です（[NOTICE](NOTICE)）。
+
+## 寄付
+
+Everything がなければ、accio はありませんでした。もし accio を便利だと感じて頂けたなら、[Everything に寄付する](https://www.voidtools.com/donate/)ことを検討してください（voidtools）。
