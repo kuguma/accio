@@ -10,7 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="README.ja.md">日本語</a> · <a href="docs/usage.en.md">Usage</a> · <a href="docs/usage.md">使い方</a> · <a href="https://github.com/kuguma/accio/releases">Releases</a>
+  <b>English</b> | <a href="README.ja.md">日本語</a>
+</p>
+
+<p align="center">
+  <a href="docs/usage.en.md">Usage</a> · <a href="docs/development.md">Development</a> · <a href="https://github.com/kuguma/accio/releases">Releases</a>
 </p>
 
 ![accio screenshot](docs/images/screenshot.png)
@@ -47,13 +51,13 @@ Requires a Rust toolchain on Windows. `cargo test` runs the whole suite without 
 | Files | Open, open path, copy, copy path, rename, bulk rename, recycle, Explorer context menu, drag and drop, properties, run as administrator |
 | Index | NTFS MFT scan + USN journal, ReFS (directory enumeration + USN V3), folder indexes for any path or UNC share with change watching, exclusions and include-only, hard links, folder sizes |
 | Integration | IPC v1/v2/v3, HTTP server (JSON/HTML, Basic auth), ETP/FTP server, `es:` URL protocol, Explorer folder context menu, EFU export and file lists |
-| App | Tray icon with double-click to show, global hotkey, autostart, session restore, Japanese/English docs, light/dark/system theme, fonts and colors |
+| App | Tray icon with double-click to show, global hotkey, autostart, session restore, English/Japanese UI and docs, light/dark/system theme, fonts and colors |
 
 See [docs/usage.en.md](docs/usage.en.md) for keyboard shortcuts, the query syntax, command-line options and every `accio.ini` key.
 
 ## Status
 
-accio is at 0.x. The UI language is currently Japanese; English UI strings are planned. Breaking changes to the index format happen between 0.x releases (the index is simply rebuilt).
+accio is at 0.x. The UI is available in English and Japanese (it follows the Windows display language; `lang=` in `accio.ini` or the settings window overrides it). Breaking changes to the index format happen between 0.x releases (the index is simply rebuilt).
 
 ## License
 

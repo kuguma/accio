@@ -170,7 +170,7 @@ pub fn copy_files_to_clipboard(paths: &[String]) -> bool {
 /// 同じフォルダ内でのリネーム。
 pub fn rename(path: &str, new_name: &str) -> std::io::Result<()> {
     let p = std::path::Path::new(path);
-    let parent = p.parent().ok_or_else(|| std::io::Error::other("親なし"))?;
+    let parent = p.parent().ok_or_else(|| std::io::Error::other(crate::i18n::tr("親なし")))?;
     std::fs::rename(p, parent.join(new_name))
 }
 
@@ -252,7 +252,7 @@ pub fn set_folder_context_menu(on: bool) -> bool {
                 ok = false;
                 continue;
             }
-            ok &= set_reg_sz(h, None, "accio で検索");
+            ok &= set_reg_sz(h, None, crate::i18n::tr("accio で検索"));
             ok &= set_reg_sz(h, Some("Icon"), &format!("\"{exe}\",0"));
             let mut hc: HKEY = std::ptr::null_mut();
             let cmd = wide("command");

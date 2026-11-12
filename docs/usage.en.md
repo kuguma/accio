@@ -92,6 +92,7 @@ Everything that can be changed in Settings (Ctrl+P) is stored under the same key
 | `color_highlight=C83C00` `color_selection=` `color_text=` `color_background=` | Highlight / selection / text / background colors (RRGGBB, empty = theme default) |
 | `font=C:\Windows\Fonts\meiryo.ttc` `font_size=13` | Font file (used first; empty = Yu Gothic UI) and base font size (px) |
 | `preview=1` `thumb_size=0|96|160|256` | Preview pane / thumbnails |
+| `lang=ja|en` | UI language (empty = follow the Windows display language; takes effect after restart) |
 | `run_in_background=1` `hotkey=ctrl+alt+a` | Stay in the tray on close/Esc, global hotkey |
 | `restore_session=1` | Restore tabs and queries from the last session |
 | `use_indexer=1` | Follow a separate indexer process (the UI stays unelevated) |

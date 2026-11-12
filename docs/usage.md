@@ -9,7 +9,7 @@ Everything 1.4 の操作がそのまま通じるように作ってある。こ�
 - `accio.exe` を起動すると UAC で昇格を求める（MFT の生読みと USN ジャーナル監視に管理者権限が要る）。初回は全ボリュームをスキャンし（C: 約 9 秒、1800 万件で合計 1 分弱）、以後は保存済み索引を 0.1 秒以内に読み込んで検索可能になる。
 - スキャン中も検索できる（到着済みの分がヒットする）。
 - 検索語が空（かつフィルタが「すべて」）のときは何も表示しない。
-- 設定とデータは `%LOCALAPPDATA%\accio`（`accio.ini`、`*.accio` 索引、`accio.log`、`Run History.csv`、`Search History.csv`）。
+- 設定とデータは `%LOCALAPPDATA%\accio`（`accio.ini`、`*.accio` 索引、`accio.log`、`Run History.csv`）。
 - UI を昇格させたくないときは設定の「昇格インデクサ」を使う（`-indexer` を最高権限のタスクで常駐させ、UI は `use_indexer=1` で索引ファイルを追従する）。
 
 ## キーボード
@@ -93,6 +93,7 @@ accio [options]
 | `color_highlight=C83C00` `color_selection=` `color_text=` `color_background=` | 検索語の強調色 / 選択行 / 文字 / 背景（RRGGBB、空で配色の既定） |
 | `font=C:\Windows\Fonts\meiryo.ttc` `font_size=13` | フォントファイル（最優先で使う。空なら Segoe UI + Yu Gothic）と基準の文字サイズ（px） |
 | `preview=1` `thumb_size=0|96|160|256` | プレビューペイン / サムネイル |
+| `lang=ja|en` | UI の言語（空なら Windows の表示言語に従う。再起動後に有効） |
 | `run_in_background=1` `hotkey=ctrl+alt+a` | 閉じる/Esc で常駐、グローバルホットキー |
 | `restore_session=1` | 終了時のタブと検索語を復元 |
 | `use_indexer=1` | 別プロセスのインデクサの索引を追従する（UI は昇格しない） |

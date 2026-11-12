@@ -36,9 +36,9 @@ impl Tray {
     pub fn new(hotkey: &str, repaint: Arc<dyn Fn() + Send + Sync>) -> anyhow::Result<Self> {
         let (tx, rx): (Sender<TrayCommand>, Receiver<TrayCommand>) = unbounded();
         let menu = Menu::new();
-        let show = MenuItem::with_id("show", "accio を表示", true, None);
-        let new_search = MenuItem::with_id("new", "新しい検索", true, None);
-        let exit = MenuItem::with_id("exit", "終了", true, None);
+        let show = MenuItem::with_id("show", crate::i18n::tr("accio を表示"), true, None);
+        let new_search = MenuItem::with_id("new", crate::i18n::tr("新しい検索"), true, None);
+        let exit = MenuItem::with_id("exit", crate::i18n::tr("終了"), true, None);
         menu.append_items(&[&show, &new_search, &exit])?;
         // 左クリックは表示/非表示の切り替えだけ。メニューは右クリック（既定では左でもメニューが出て、
         // ウィンドウがフォーカスを取った瞬間に消えるので「一瞬メニューが出る」ように見えていた）

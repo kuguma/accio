@@ -125,13 +125,11 @@ fn handle(index: &Index, params: &[(String, String)]) -> (String, bool) {
     } else {
         let mut out = String::new();
         out.push_str("<!doctype html><html><head><meta charset=\"utf-8\"><title>accio</title><style>body{font-family:sans-serif;margin:1em}table{border-collapse:collapse}td,th{padding:2px 8px;text-align:left}tr:nth-child(even){background:#f4f4f4}.n{color:#666}</style></head><body>");
-        out.push_str(&format!(
+        out.push_str(&crate::i18n::trf(
             "<form><input name=\"search\" value=\"{}\" size=\"60\" autofocus> <input type=\"submit\" value=\"検索\"> <label><input type=\"checkbox\" name=\"path\" value=\"1\"{}>パス</label> <label><input type=\"checkbox\" name=\"regex\" value=\"1\"{}>正規表現</label></form>",
-            html_escape(&query),
-            if opts.match_path { " checked" } else { "" },
-            if opts.regex { " checked" } else { "" }
+            &[&html_escape(&query), &(if opts.match_path { " checked" } else { "" }), &(if opts.regex { " checked" } else { "" })],
         ));
-        out.push_str(&format!("<p class=\"n\">{} 件 ({:.0} ms)</p><table><tr><th>名前</th><th>パス</th><th>サイズ</th><th>更新日時</th></tr>", res.total, res.elapsed_ms));
+        out.push_str(&crate::i18n::trf("<p class=\"n\">{} 件 ({:.0} ms)</p><table><tr><th>名前</th><th>パス</th><th>サイズ</th><th>更新日時</th></tr>", &[&(res.total), &(res.elapsed_ms)]));
         for h in &res.hits[start..end] {
             let g = vols[h.vol as usize].read();
             out.push_str(&format!(
@@ -145,7 +143,7 @@ fn handle(index: &Index, params: &[(String, String)]) -> (String, bool) {
         }
         out.push_str("</table>");
         if end < res.hits.len() {
-            out.push_str(&format!("<p><a href=\"?search={}&offset={}&count={}\">次へ</a></p>", html_escape(&query).replace(' ', "+"), end, count));
+            out.push_str(&crate::i18n::trf("<p><a href=\"?search={}&offset={}&count={}\">次へ</a></p>", &[&(html_escape(&query).replace(' ', "+")), &end, &count]));
         }
         out.push_str("</body></html>");
         (out, false)

@@ -198,11 +198,11 @@ impl Engine {
                         .map(|v| VolStatus { root: v.display_root(), state: VolState::Pending, entries: 0, usn_events: 0, last_change: None })
                         .collect();
                     if vols.is_empty() {
-                        st.message = "固定ディスクの NTFS ボリュームが見つかりません".into();
+                        st.message = crate::i18n::tr("固定ディスクの NTFS ボリュームが見つかりません").into();
                     } else if me.follow_indexer {
-                        st.message = "インデクサ（別プロセス）の索引を参照中".into();
+                        st.message = crate::i18n::tr("インデクサ（別プロセス）の索引を参照中").into();
                     } else if !me.elevated {
-                        st.message = "読み取り専用（非昇格）: 保存済み索引のみ。更新は反映されません".into();
+                        st.message = crate::i18n::tr("読み取り専用（非昇格）: 保存済み索引のみ。更新は反映されません").into();
                     }
                 }
                 (me.repaint)();
@@ -261,7 +261,7 @@ impl Engine {
                     self.bump();
                     self.build_name_order(&shared);
                 }
-                Err(e) => self.set_state(slot, |s| s.state = VolState::Error(format!("索引なし: {e}"))),
+                Err(e) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::trf("索引なし: {}", &[&e]))),
             }
             return;
         }
@@ -502,8 +502,8 @@ impl Engine {
                     self.bump();
                     self.build_name_order(&shared);
                 }
-                Ok(_) => self.set_state(slot, |s| s.state = VolState::Error("索引ファイルのボリューム不一致".into())),
-                Err(e) => self.set_state(slot, |s| s.state = VolState::Error(format!("索引なし: {e}"))),
+                Ok(_) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::tr("索引ファイルのボリューム不一致").into())),
+                Err(e) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::trf("索引なし: {}", &[&e]))),
             }
             return;
         }
@@ -862,7 +862,7 @@ impl Engine {
     /// ReFS: ディレクトリ列挙（ファイル ID・サイズ・日時込み）で索引を組む。更新は USN ジャーナル（V3）で追う。
     /// `FSCTL_ENUM_USN_DATA` は ReFS では使えない（error 1）。
     fn refs_scan(&self, slot: usize, info: &VolumeInfo, journal: &UsnJournal, replace_target: Option<&SharedVolume>) -> anyhow::Result<SharedVolume> {
-        let adapter = journal.refs().cloned().ok_or_else(|| anyhow::anyhow!("ReFS の変換層が無い"))?;
+        let adapter = journal.refs().cloned().ok_or_else(|| anyhow::anyhow!(crate::i18n::tr("ReFS の変換層が無い")))?;
         let jstate = journal.query().map_err(|e| anyhow::anyhow!("USN query failed: {e}"))?;
         let start_usn = jstate.next_usn;
         self.set_state(slot, |s| s.state = VolState::Scanning { done: 0, total: 1 });
@@ -900,7 +900,7 @@ impl Engine {
         let mut done = 0u64;
         for chunk in entries.chunks(100_000) {
             if cancel() {
-                anyhow::bail!("中断");
+                anyhow::bail!(crate::i18n::tr("中断"));
             }
             builder.push_batch(chunk.to_vec());
             done += chunk.len() as u64;

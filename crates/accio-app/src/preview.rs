@@ -103,17 +103,17 @@ pub fn is_image_ext(ext: &str) -> bool {
 fn load(path: &str, is_dir: bool) -> Content {
     if is_dir {
         let n = std::fs::read_dir(path).map(|r| r.count()).unwrap_or(0);
-        return Content::Info(format!("フォルダ（直下 {n} 項目）"));
+        return Content::Info(crate::i18n::trf("フォルダ（直下 {} 項目）", &[&n]));
     }
     let ext = path.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     let md = match std::fs::metadata(path) {
         Ok(m) => m,
-        Err(e) => return Content::Info(format!("読めません: {e}")),
+        Err(e) => return Content::Info(crate::i18n::trf("読めません: {}", &[&e])),
     };
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "gif" | "bmp" | "webp" | "ico" | "tif" | "tiff" => {
             if md.len() > MAX_IMAGE_BYTES {
-                return Content::Info(format!("画像が大きすぎます（{} MB）", md.len() >> 20));
+                return Content::Info(crate::i18n::trf("画像が大きすぎます（{} MB）", &[&(md.len() >> 20)]));
             }
             match image::open(path) {
                 Ok(img) => {
@@ -122,7 +122,7 @@ fn load(path: &str, is_dir: bool) -> Content {
                     let rgba = img.to_rgba8();
                     Content::Image { size: [rgba.width() as usize, rgba.height() as usize], rgba: rgba.into_raw() }
                 }
-                Err(e) => Content::Info(format!("画像を読めません: {e}")),
+                Err(e) => Content::Info(crate::i18n::trf("画像を読めません: {}", &[&e])),
             }
         }
         "txt" | "md" | "rs" | "c" | "h" | "cpp" | "hpp" | "py" | "js" | "ts" | "json" | "toml" | "yaml" | "yml" | "ini" | "cfg" | "log" | "csv" | "xml" | "html" | "htm" | "css" | "bat" | "ps1" | "sh" | "java" | "cs" | "go" | "lua" | "sql" | "tex" | "efu" => {
@@ -133,11 +133,11 @@ fn load(path: &str, is_dir: bool) -> Content {
                     let n = f.read(&mut buf).unwrap_or(0);
                     buf.truncate(n);
                     let s = String::from_utf8_lossy(&buf).into_owned();
-                    Content::Text(if md.len() as usize > n { format!("{s}\n…（先頭 {} KB）", n >> 10) } else { s })
+                    Content::Text(if md.len() as usize > n { crate::i18n::trf("{}\n…（先頭 {} KB）", &[&s, &(n >> 10)]) } else { s })
                 }
-                Err(e) => Content::Info(format!("読めません: {e}")),
+                Err(e) => Content::Info(crate::i18n::trf("読めません: {}", &[&e])),
             }
         }
-        _ => Content::Info(format!("{} バイト（プレビュー非対応の種類）", md.len())),
+        _ => Content::Info(crate::i18n::trf("{} バイト（プレビュー非対応の種類）", &[&(md.len())])),
     }
 }

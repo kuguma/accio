@@ -108,8 +108,8 @@ pub fn show(hwnd: isize, paths: &[String]) -> Result<(), String> {
             }
             children.push(child);
         }
-        let folder = folder.ok_or("フォルダなし")?;
-        let owner = create_owner(parent).ok_or("メニュー用ウィンドウを作れない")?;
+        let folder = folder.ok_or(crate::i18n::tr("フォルダなし"))?;
+        let owner = create_owner(parent).ok_or(crate::i18n::tr("メニュー用ウィンドウを作れない"))?;
         let menu: IContextMenu = folder.GetUIObjectOf(owner, &children, None).map_err(|e| e.to_string())?;
         let m2: Option<IContextMenu2> = menu.cast().ok();
         let m3: Option<IContextMenu3> = menu.cast().ok();
@@ -164,7 +164,7 @@ pub fn probe(path: &str) -> Result<i32, String> {
         SHParseDisplayName(PCWSTR(w.as_ptr()), None, &mut pidl, 0, None).map_err(|e| e.to_string())?;
         let mut child: *mut ITEMIDLIST = std::ptr::null_mut();
         let folder: IShellFolder = SHBindToParent(pidl, Some(&mut child)).map_err(|e| e.to_string())?;
-        let owner = create_owner(HWND::default()).ok_or("メニュー用ウィンドウを作れない")?;
+        let owner = create_owner(HWND::default()).ok_or(crate::i18n::tr("メニュー用ウィンドウを作れない"))?;
         let menu: IContextMenu = folder.GetUIObjectOf(owner, &[child as *const _], None).map_err(|e| e.to_string())?;
         let m2: Option<IContextMenu2> = menu.cast().ok();
         let m3: Option<IContextMenu3> = menu.cast().ok();

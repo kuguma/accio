@@ -5,6 +5,7 @@
 mod dragdrop;
 mod elevation;
 mod engine;
+mod i18n;
 mod etp;
 mod history;
 mod http;
@@ -47,6 +48,7 @@ pub struct CliOptions {
 }
 
 fn parse_cli() -> CliOptions {
+    i18n::init(None);
     use accio_query::{Sort, SortKey};
     let mut o = CliOptions::default();
     let mut it = std::env::args().skip(1);
@@ -60,8 +62,7 @@ fn parse_cli() -> CliOptions {
             "-diacritics" | "-a" => o.diacritics = true,
             "-instance" => o.instance = it.next(),
             "-help" | "-h" | "-?" | "--help" => {
-                println!(
-                    "accio [options]\n  -s, -search <text>   検索語\n  -i, -case            大小区別\n  -p, -match-path      パス一致\n  -ww                  単語一致\n  -r, -regex           正規表現\n  -a, -diacritics      ダイアクリティカルマークを区別\n  -sort <name|path|size|dm|dc|da|ext|runcount|dr>[-descending]\n  -filter <name>       フィルタ\n  -filelist <path>     ファイルリスト（EFU/テキスト）を開いて検索\n  -instance <name>     インスタンス名（IPC の識別）\n  -startup             トレイ常駐で開始（ウィンドウを出さない）\n  -new-window          起動中のインスタンスへ転送せず新しく起動\n  -new-tab             起動中のインスタンスに新しいタブで検索\n  -toggle-window / -exit / -reindex / -save-db   起動中のインスタンスへ転送\n環境変数: ACCIO_NO_ELEVATE=1（昇格せず読み取り専用）, ACCIO_DATA_DIR=<dir>"
+                println!("{}", crate::i18n::tr("accio [options]\n  -s, -search <text>   検索語\n  -i, -case            大小区別\n  -p, -match-path      パス一致\n  -ww                  単語一致\n  -r, -regex           正規表現\n  -a, -diacritics      ダイアクリティカルマークを区別\n  -sort <name|path|size|dm|dc|da|ext|runcount|dr>[-descending]\n  -filter <name>       フィルタ\n  -filelist <path>     ファイルリスト（EFU/テキスト）を開いて検索\n  -instance <name>     インスタンス名（IPC の識別）\n  -startup             トレイ常駐で開始（ウィンドウを出さない）\n  -new-window          起動中のインスタンスへ転送せず新しく起動\n  -new-tab             起動中のインスタンスに新しいタブで検索\n  -toggle-window / -exit / -reindex / -save-db   起動中のインスタンスへ転送\n環境変数: ACCIO_NO_ELEVATE=1（昇格せず読み取り専用）, ACCIO_DATA_DIR=<dir>")
                 );
                 std::process::exit(0);
             }
@@ -258,6 +259,7 @@ fn main() -> eframe::Result<()> {
     log::info!("accio {} 起動 (elevated={elevated}, indexer={}, follow_indexer={follow_indexer})", env!("CARGO_PKG_VERSION"), cli.indexer);
 
     let settings = settings::Settings::load(&dir.join("accio.ini"));
+    i18n::init(settings.get("lang"));
     if cli.indexer {
         // ウィンドウなしのインデクサ。終了は IPC の EXIT（`accio -instance accio-indexer -exit`）か taskkill
         let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(|| {});

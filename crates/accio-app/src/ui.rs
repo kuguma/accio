@@ -38,17 +38,17 @@ impl Col {
     pub const ALL: [Col; 11] = [Col::Name, Col::Path, Col::Size, Col::DateModified, Col::DateCreated, Col::DateAccessed, Col::Extension, Col::Attributes, Col::Type, Col::RunCount, Col::DateRun];
     fn label(self) -> &'static str {
         match self {
-            Col::Name => "名前",
-            Col::Path => "パス",
-            Col::Size => "サイズ",
-            Col::DateModified => "更新日時",
-            Col::DateCreated => "作成日時",
-            Col::Extension => "拡張子",
-            Col::Attributes => "属性",
-            Col::Type => "種類",
-            Col::RunCount => "実行回数",
-            Col::DateAccessed => "アクセス日時",
-            Col::DateRun => "実行日時",
+            Col::Name => crate::i18n::tr("名前"),
+            Col::Path => crate::i18n::tr("パス"),
+            Col::Size => crate::i18n::tr("サイズ"),
+            Col::DateModified => crate::i18n::tr("更新日時"),
+            Col::DateCreated => crate::i18n::tr("作成日時"),
+            Col::Extension => crate::i18n::tr("拡張子"),
+            Col::Attributes => crate::i18n::tr("属性"),
+            Col::Type => crate::i18n::tr("種類"),
+            Col::RunCount => crate::i18n::tr("実行回数"),
+            Col::DateAccessed => crate::i18n::tr("アクセス日時"),
+            Col::DateRun => crate::i18n::tr("実行日時"),
         }
     }
     fn key(self) -> &'static str {
@@ -482,7 +482,7 @@ impl BulkRename {
         let re = if self.regex && !self.find.is_empty() {
             match regex::RegexBuilder::new(&self.find).case_insensitive(!self.match_case).build() {
                 Ok(r) => Some(r),
-                Err(e) => return (out, Some(format!("正規表現エラー: {e}"))),
+                Err(e) => return (out, Some(crate::i18n::trf("正規表現エラー: {}", &[&e]))),
             }
         } else {
             None
@@ -1165,8 +1165,8 @@ impl App {
         self.file_list_rx = Some(rx);
         std::thread::spawn(move || {
             let Some(path) = rfd::FileDialog::new()
-                .add_filter("ファイルリスト (*.efu, *.txt, *.csv)", &["efu", "txt", "csv"])
-                .add_filter("すべてのファイル", &["*"])
+                .add_filter(crate::i18n::tr("ファイルリスト (*.efu, *.txt, *.csv)"), &["efu", "txt", "csv"])
+                .add_filter(crate::i18n::tr("すべてのファイル"), &["*"])
                 .pick_file()
             else {
                 return;
@@ -1189,7 +1189,7 @@ impl App {
             self.engine.index.set_overlay(None);
             self.engine.generation.fetch_add(1, Ordering::Relaxed);
             self.last_submitted = None;
-            self.notify("ファイルリストを閉じました");
+            self.notify(crate::i18n::tr("ファイルリストを閉じました"));
         }
     }
 
@@ -1203,11 +1203,11 @@ impl App {
                 self.last_submitted = None;
                 self.file_list = Some(name.clone());
                 self.file_list_rx = None;
-                self.notify(format!("ファイルリストを開きました: {name}（{n} 件）"));
+                self.notify(crate::i18n::trf("ファイルリストを開きました: {}（{} 件）", &[&name, &n]));
             }
             Ok(Err(e)) => {
                 self.file_list_rx = None;
-                self.notify(format!("ファイルリストを開けません: {e}"));
+                self.notify(crate::i18n::trf("ファイルリストを開けません: {}", &[&e]));
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
             Err(std::sync::mpsc::TryRecvError::Disconnected) => self.file_list_rx = None,
@@ -1219,9 +1219,9 @@ impl App {
         let vols = self.engine.index.snapshot();
         std::thread::spawn(move || {
             let Some(path) = rfd::FileDialog::new()
-                .add_filter("Everything ファイルリスト (*.efu)", &["efu"])
+                .add_filter(crate::i18n::tr("Everything ファイルリスト (*.efu)"), &["efu"])
                 .add_filter("CSV (*.csv)", &["csv"])
-                .add_filter("テキスト (*.txt)", &["txt"])
+                .add_filter(crate::i18n::tr("テキスト (*.txt)"), &["txt"])
                 .set_file_name("accio-results.efu")
                 .save_file()
             else {
@@ -1310,15 +1310,15 @@ fn ui_mods(r: &egui::Response) -> (bool, bool) {
 
 fn sort_label(k: SortKey) -> &'static str {
     match k {
-        SortKey::Name => "名前",
-        SortKey::Path => "パス",
-        SortKey::Size => "サイズ",
-        SortKey::DateModified => "更新日時",
-        SortKey::DateCreated => "作成日時",
-        SortKey::Extension => "拡張子",
-        SortKey::RunCount => "実行回数",
-        SortKey::DateAccessed => "アクセス日時",
-        SortKey::DateRun => "実行日時",
+        SortKey::Name => crate::i18n::tr("名前"),
+        SortKey::Path => crate::i18n::tr("パス"),
+        SortKey::Size => crate::i18n::tr("サイズ"),
+        SortKey::DateModified => crate::i18n::tr("更新日時"),
+        SortKey::DateCreated => crate::i18n::tr("作成日時"),
+        SortKey::Extension => crate::i18n::tr("拡張子"),
+        SortKey::RunCount => crate::i18n::tr("実行回数"),
+        SortKey::DateAccessed => crate::i18n::tr("アクセス日時"),
+        SortKey::DateRun => crate::i18n::tr("実行日時"),
     }
 }
 
@@ -1399,11 +1399,11 @@ impl eframe::App for App {
                 }
                 Reindex => {
                     self.engine.reindex_requested.fetch_add(1, Ordering::Relaxed);
-                    self.notify("再索引を開始します");
+                    self.notify(crate::i18n::tr("再索引を開始します"));
                 }
                 SaveDb => {
                     self.engine.save_requested.fetch_add(1, Ordering::Relaxed);
-                    self.notify("索引を保存します");
+                    self.notify(crate::i18n::tr("索引を保存します"));
                 }
                 NewTab(q) => {
                     self.new_tab();
@@ -1705,7 +1705,7 @@ impl eframe::App for App {
             if !paths.is_empty() {
                 let n = paths.len();
                 if shell::copy_files_to_clipboard(&paths) {
-                    self.notify(format!("{n} 件のファイルをコピーしました（Explorer に貼り付け可）"));
+                    self.notify(crate::i18n::trf("{} 件のファイルをコピーしました（Explorer に貼り付け可）", &[&n]));
                 }
             }
         }
@@ -1730,9 +1730,9 @@ impl eframe::App for App {
                 ui.horizontal_wrapped(|ui| {
                     for (i, t) in self.tabs.iter().enumerate() {
                         let label = if i == self.active_tab {
-                            if self.query.is_empty() { "(空)".to_string() } else { self.query.chars().take(24).collect() }
+                            if self.query.is_empty() { crate::i18n::tr("(空)").to_string() } else { self.query.chars().take(24).collect() }
                         } else if t.query.is_empty() {
-                            "(空)".to_string()
+                            crate::i18n::tr("(空)").to_string()
                         } else {
                             t.query.chars().take(24).collect()
                         };
@@ -1743,9 +1743,9 @@ impl eframe::App for App {
                         if r.middle_clicked() || r.secondary_clicked() {
                             close = Some(i);
                         }
-                        r.on_hover_text("右クリック / 中クリックで閉じる");
+                        r.on_hover_text(crate::i18n::tr("右クリック / 中クリックで閉じる"));
                     }
-                    if ui.small_button("+").on_hover_text("新しいタブ (Ctrl+T)").clicked() {
+                    if ui.small_button("+").on_hover_text(crate::i18n::tr("新しいタブ (Ctrl+T)")).clicked() {
                         go = Some(usize::MAX);
                     }
                 });
@@ -1763,17 +1763,17 @@ impl eframe::App for App {
             }
             ui.horizontal(|ui| {
                 if self.mode == Mode::DiskUsage {
-                    ui.label(RichText::new("容量").strong());
-                    if ui.button("↑ 親へ").clicked() {
+                    ui.label(RichText::new(crate::i18n::tr("容量")).strong());
+                    if ui.button(crate::i18n::tr("↑ 親へ")).clicked() {
                         self.du_go_up();
                     }
-                    ui.label(self.du_path.clone().unwrap_or_else(|| "すべてのボリューム".into()));
+                    ui.label(self.du_path.clone().unwrap_or_else(|| crate::i18n::tr("すべてのボリューム").into()));
                     ui.separator();
                 }
                 // 検索窓の見た目は状態（フォーカス/ホバー/押下）で変えない。枠は自前で描き、egui の枠は使わない
                 let edit = egui::TextEdit::singleline(&mut self.query)
                     .id(self.search_id)
-                    .hint_text(if self.mode == Mode::Search { "検索（Everything 構文: a b|c !d ext:png size:>1mb dm:today path:…）" } else { "このフォルダ内を絞り込み" })
+                    .hint_text(if self.mode == Mode::Search { crate::i18n::tr("検索（Everything 構文: a b|c !d ext:png size:>1mb dm:today path:…）") } else { crate::i18n::tr("このフォルダ内を絞り込み") })
                     .desired_width(f32::INFINITY)
                     .frame(false)
                     .return_key(None);
@@ -1789,18 +1789,18 @@ impl eframe::App for App {
                 let _ = (&resp, popup_open);
             });
             ui.horizontal_wrapped(|ui| {
-                ui.toggle_value(&mut self.opts.match_case, "Aa").on_hover_text("大文字と小文字を区別 (Ctrl+I)");
-                ui.toggle_value(&mut self.opts.match_path, "パス").on_hover_text("パス全体に一致 (Ctrl+U)");
-                ui.toggle_value(&mut self.opts.whole_word, "単語").on_hover_text("単語単位で一致 (Ctrl+B)");
-                ui.toggle_value(&mut self.opts.regex, ".*").on_hover_text("正規表現 (Ctrl+R)");
-                ui.toggle_value(&mut self.opts.match_diacritics, "é").on_hover_text("ダイアクリティカルマークを区別（off なら e は é にも一致）");
+                ui.toggle_value(&mut self.opts.match_case, "Aa").on_hover_text(crate::i18n::tr("大文字と小文字を区別 (Ctrl+I)"));
+                ui.toggle_value(&mut self.opts.match_path, crate::i18n::tr("パス")).on_hover_text(crate::i18n::tr("パス全体に一致 (Ctrl+U)"));
+                ui.toggle_value(&mut self.opts.whole_word, crate::i18n::tr("単語")).on_hover_text(crate::i18n::tr("単語単位で一致 (Ctrl+B)"));
+                ui.toggle_value(&mut self.opts.regex, ".*").on_hover_text(crate::i18n::tr("正規表現 (Ctrl+R)"));
+                ui.toggle_value(&mut self.opts.match_diacritics, "é").on_hover_text(crate::i18n::tr("ダイアクリティカルマークを区別（off なら e は é にも一致）"));
                 ui.separator();
                 // ドライブの選択
                 let roots: Vec<String> = self.engine.status.lock().volumes.iter().map(|v| v.root.clone()).collect();
                 let drives_label = if self.drives_off.is_empty() {
-                    "ドライブ: すべて".to_string()
+                    crate::i18n::tr("ドライブ: すべて").to_string()
                 } else {
-                    format!("ドライブ: {}", roots.iter().filter(|r| !self.drives_off.contains(*r)).cloned().collect::<Vec<_>>().join(" "))
+                    crate::i18n::trf("ドライブ: {}", &[&(roots.iter().filter(|r| !self.drives_off.contains(*r)).cloned().collect::<Vec<_>>().join(" "))])
                 };
                 let mut drives_changed = false;
                 ui.menu_button(drives_label, |ui| {
@@ -1816,7 +1816,7 @@ impl eframe::App for App {
                         }
                     }
                     ui.separator();
-                    if ui.button("すべて").clicked() {
+                    if ui.button(crate::i18n::tr("すべて")).clicked() {
                         self.drives_off.clear();
                         drives_changed = true;
                     }
@@ -1828,13 +1828,13 @@ impl eframe::App for App {
                 ui.separator();
                 if let Some(name) = self.file_list.clone() {
                     ui.separator();
-                    ui.label(RichText::new(format!("ファイルリスト: {name}")).strong());
-                    if ui.button("閉じる (Ctrl+Shift+O)").clicked() {
+                    ui.label(RichText::new(crate::i18n::trf("ファイルリスト: {}", &[&name])).strong());
+                    if ui.button(crate::i18n::tr("閉じる (Ctrl+Shift+O)")).clicked() {
                         close_file_list = true;
                     }
                 }
                 ui.separator();
-                ui.label("並べ替え:");
+                ui.label(crate::i18n::tr("並べ替え:"));
                 egui::ComboBox::from_id_salt("sort")
                     .selected_text(sort_label(self.sort.key))
                     .show_ui(ui, |ui| {
@@ -1842,12 +1842,12 @@ impl eframe::App for App {
                             ui.selectable_value(&mut self.sort.key, k, sort_label(k));
                         }
                     });
-                if ui.button(if self.sort.ascending { "昇順" } else { "降順" }).clicked() {
+                if ui.button(if self.sort.ascending { crate::i18n::tr("昇順") } else { crate::i18n::tr("降順") }).clicked() {
                     self.sort.ascending = !self.sort.ascending;
                 }
                 ui.separator();
                 let du = self.mode == Mode::DiskUsage;
-                if ui.selectable_label(du, "容量ビュー").on_hover_text("容量を占有しているフォルダ/ファイルを一覧（フォルダを Enter/ダブルクリックで掘り下げ）").clicked() {
+                if ui.selectable_label(du, crate::i18n::tr("容量ビュー")).on_hover_text(crate::i18n::tr("容量を占有しているフォルダ/ファイルを一覧（フォルダを Enter/ダブルクリックで掘り下げ）")).clicked() {
                     if du {
                         self.mode = Mode::Search;
                         self.du_path = None;
@@ -1859,22 +1859,22 @@ impl eframe::App for App {
                     self.selected = None;
                     self.selected_row = None;
                 }
-                if ui.button("最大ファイル").on_hover_text("全ボリュームで最大のファイル").clicked() {
+                if ui.button(crate::i18n::tr("最大ファイル")).on_hover_text(crate::i18n::tr("全ボリュームで最大のファイル")).clicked() {
                     self.mode = Mode::Search;
                     self.du_path = None;
                     self.query = "file: size:>100mb".into();
                     self.sort = Sort { key: SortKey::Size, ascending: false };
                 }
                 ui.separator();
-                ui.label("フィルタ:");
+                ui.label(crate::i18n::tr("フィルタ:"));
                 let filter_label = if self.filter < FILTERS.len() {
-                    FILTERS[self.filter].0.to_string()
+                    crate::i18n::tr(FILTERS[self.filter].0).to_string()
                 } else {
                     self.custom_filters.get(self.filter - FILTERS.len()).map(|(n, _, _)| n.clone()).unwrap_or_default()
                 };
                 egui::ComboBox::from_id_salt("filter").selected_text(filter_label).show_ui(ui, |ui| {
                     for (i, (n, _)) in FILTERS.iter().enumerate() {
-                        ui.selectable_value(&mut self.filter, i, *n);
+                        ui.selectable_value(&mut self.filter, i, crate::i18n::tr(n));
                     }
                     if !self.custom_filters.is_empty() {
                         ui.separator();
@@ -1883,26 +1883,26 @@ impl eframe::App for App {
                         ui.selectable_value(&mut self.filter, FILTERS.len() + i, n);
                     }
                 });
-                if ui.button("ブックマーク (Ctrl+D)").clicked() {
+                if ui.button(crate::i18n::tr("ブックマーク (Ctrl+D)")).clicked() {
                     self.show_bookmarks = !self.show_bookmarks;
                 }
-                if ui.button("新しいタブ (Ctrl+T)").clicked() {
+                if ui.button(crate::i18n::tr("新しいタブ (Ctrl+T)")).clicked() {
                     self.new_tab();
                 }
                 let thumbs_on = self.thumb_size > 0;
-                if ui.selectable_label(thumbs_on, "サムネイル").on_hover_text("Ctrl+Shift+1/2/3 でサイズ、Ctrl+Shift+6 で詳細表示").clicked() {
+                if ui.selectable_label(thumbs_on, crate::i18n::tr("サムネイル")).on_hover_text(crate::i18n::tr("Ctrl+Shift+1/2/3 でサイズ、Ctrl+Shift+6 で詳細表示")).clicked() {
                     self.thumb_size = if thumbs_on { 0 } else { 160 };
                     self.settings.set("thumb_size", self.thumb_size);
                 }
-                if ui.selectable_label(self.show_preview, "プレビュー (Alt+P)").clicked() {
+                if ui.selectable_label(self.show_preview, crate::i18n::tr("プレビュー (Alt+P)")).clicked() {
                     self.show_preview = !self.show_preview;
                     self.settings.set("preview", self.show_preview as u8);
                 }
                 ui.separator();
-                if ui.button("設定 (Ctrl+P)").clicked() {
+                if ui.button(crate::i18n::tr("設定 (Ctrl+P)")).clicked() {
                     self.show_settings = true;
                 }
-                if ui.button("エクスポート (Ctrl+S)").clicked() {
+                if ui.button(crate::i18n::tr("エクスポート (Ctrl+S)")).clicked() {
                     export = true;
                 }
                 if let Some((msg, t)) = &self.notice {
@@ -1932,8 +1932,8 @@ impl eframe::App for App {
             let mut pick: Option<String> = None;
             let mut remove: Option<usize> = None;
             let mut add = false;
-            egui::Window::new("ブックマーク").open(&mut open).resizable(true).show(ctx, |ui| {
-                if ui.button(format!("現在の検索を追加: {}", if self.query.is_empty() { "(空)" } else { &self.query })).clicked() && !self.query.is_empty() {
+            egui::Window::new(crate::i18n::tr("ブックマーク")).open(&mut open).resizable(true).show(ctx, |ui| {
+                if ui.button(crate::i18n::trf("現在の検索を追加: {}", &[&(if self.query.is_empty() { crate::i18n::tr("(空)") } else { &self.query })])).clicked() && !self.query.is_empty() {
                     add = true;
                 }
                 ui.separator();
@@ -1972,71 +1972,85 @@ impl eframe::App for App {
         // ---- 設定ウィンドウ ----
         if self.show_settings {
             let mut open = true;
-            egui::Window::new("設定").collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("設定")).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
                 let mut changed = false;
-                changed |= ui.checkbox(&mut self.run_in_background, "閉じる/Esc でトレイに常駐する").changed();
+                changed |= ui.checkbox(&mut self.run_in_background, crate::i18n::tr("閉じる/Esc でトレイに常駐する")).changed();
                 ui.separator();
-                ui.label(RichText::new("昇格インデクサ（UI を非昇格で動かす）").strong());
+                ui.label(RichText::new(crate::i18n::tr("昇格インデクサ（UI を非昇格で動かす）")).strong());
                 let mut use_idx = self.settings.bool("use_indexer", false);
-                if ui.checkbox(&mut use_idx, "別プロセスのインデクサの索引を参照する（UI は昇格しない。再起動後に有効）").changed() {
+                if ui.checkbox(&mut use_idx, crate::i18n::tr("別プロセスのインデクサの索引を参照する（UI は昇格しない。再起動後に有効）")).changed() {
                     self.settings.set("use_indexer", use_idx as u8);
                     changed = true;
                 }
                 ui.horizontal(|ui| {
                     let exe = std::env::current_exe().map(|p| p.display().to_string()).unwrap_or_default();
-                    if ui.button("インデクサを今すぐ起動（UAC）").clicked() {
+                    if ui.button(crate::i18n::tr("インデクサを今すぐ起動（UAC）")).clicked() {
                         shell::run_as_admin(&exe, "-indexer");
                     }
-                    if ui.button("ログオン時に起動するタスクを登録（UAC）").clicked() {
+                    if ui.button(crate::i18n::tr("ログオン時に起動するタスクを登録（UAC）")).clicked() {
                         shell::run_as_admin("schtasks.exe", &format!("/Create /TN accio-indexer /SC ONLOGON /RL HIGHEST /F /TR \"\\\"{exe}\\\" -indexer\""));
                     }
-                    if ui.button("タスクを削除（UAC）").clicked() {
+                    if ui.button(crate::i18n::tr("タスクを削除（UAC）")).clicked() {
                         shell::run_as_admin("schtasks.exe", "/Delete /TN accio-indexer /F");
                     }
                 });
                 let mut rs = self.settings.bool("restore_session", true);
-                if ui.checkbox(&mut rs, "終了時のタブと検索語を次回復元する").changed() {
+                if ui.checkbox(&mut rs, crate::i18n::tr("終了時のタブと検索語を次回復元する")).changed() {
                     self.settings.set("restore_session", rs as u8);
                     changed = true;
                 }
                 let mut ctx_on = shell::is_folder_context_menu();
-                if ui.checkbox(&mut ctx_on, "Explorer のフォルダ右クリックに「accio で検索」を追加する").changed() && !shell::set_folder_context_menu(ctx_on) {
-                    self.notify("右クリックメニューの設定を変更できませんでした");
+                if ui.checkbox(&mut ctx_on, crate::i18n::tr("Explorer のフォルダ右クリックに「accio で検索」を追加する")).changed() && !shell::set_folder_context_menu(ctx_on) {
+                    self.notify(crate::i18n::tr("右クリックメニューの設定を変更できませんでした"));
                 }
                 let mut url_on = shell::is_url_protocol();
-                if ui.checkbox(&mut url_on, "es: URL プロトコルを accio に関連付ける（Everything と同じ es:検索語）").changed() && !shell::set_url_protocol(url_on) {
-                    self.notify("URL プロトコルの設定を変更できませんでした");
+                if ui.checkbox(&mut url_on, crate::i18n::tr("es: URL プロトコルを accio に関連付ける（Everything と同じ es:検索語）")).changed() && !shell::set_url_protocol(url_on) {
+                    self.notify(crate::i18n::tr("URL プロトコルの設定を変更できませんでした"));
                 }
                 let mut sol = self.start_on_login;
-                if ui.checkbox(&mut sol, "ログオン時に自動起動する（-startup、トレイ常駐）").changed() {
+                if ui.checkbox(&mut sol, crate::i18n::tr("ログオン時に自動起動する（-startup、トレイ常駐）")).changed() {
                     if shell::set_start_on_login(sol) {
                         self.start_on_login = sol;
                     } else {
-                        self.notify("自動起動の設定を変更できませんでした");
+                        self.notify(crate::i18n::tr("自動起動の設定を変更できませんでした"));
                     }
                 }
                 ui.horizontal(|ui| {
-                    ui.label("ホットキー:");
+                    ui.label(crate::i18n::tr("言語 / Language:"));
+                    let cur = self.settings.get("lang").unwrap_or("").to_string();
+                    let label = match cur.as_str() { "ja" => "日本語", "en" => "English", _ => crate::i18n::tr("自動") };
+                    egui::ComboBox::from_id_salt("lang").selected_text(label).show_ui(ui, |ui| {
+                        for (v, l) in [("", crate::i18n::tr("自動")), ("ja", "日本語"), ("en", "English")] {
+                            if ui.selectable_label(cur == v, l).clicked() && cur != v {
+                                self.settings.set("lang", v);
+                                changed = true;
+                            }
+                        }
+                    });
+                    ui.label(crate::i18n::tr("（再起動後に有効）"));
+                });
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::tr("ホットキー:"));
                     changed |= ui.text_edit_singleline(&mut self.settings_hotkey).changed();
-                    ui.label("（例 ctrl+alt+a。空で無効。再起動後に有効）");
+                    ui.label(crate::i18n::tr("（例 ctrl+alt+a。空で無効。再起動後に有効）"));
                 });
                 let mut http_on = self.settings.bool("http_server", false);
                 ui.horizontal(|ui| {
-                    if ui.checkbox(&mut http_on, "HTTP サーバー（再起動後に有効）").changed() {
+                    if ui.checkbox(&mut http_on, crate::i18n::tr("HTTP サーバー（再起動後に有効）")).changed() {
                         self.settings.set("http_server", http_on as u8);
                         changed = true;
                     }
-                    ui.label("ポート:");
+                    ui.label(crate::i18n::tr("ポート:"));
                     changed |= ui.text_edit_singleline(&mut self.settings_http_port).changed();
                 });
                 ui.horizontal(|ui| {
-                    ui.label("フォントファイル（空なら Segoe UI + Yu Gothic）:");
+                    ui.label(crate::i18n::tr("フォントファイル（空なら Segoe UI + Yu Gothic）:"));
                     if ui.text_edit_singleline(&mut self.settings_font).lost_focus() {
                         self.settings.set("font", self.settings_font.clone());
                         install_fonts(ctx, Some(&self.settings_font), self.font_size as f32);
                         changed = true;
                     }
-                    ui.label("文字サイズ:");
+                    ui.label(crate::i18n::tr("文字サイズ:"));
                     for z in [11u8, 12, 13, 14, 16, 18, 20] {
                         if ui.selectable_label(self.font_size == z, format!("{z}")).clicked() {
                             self.font_size = z;
@@ -2047,9 +2061,9 @@ impl eframe::App for App {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("色（RRGGBB、空で既定）:");
+                    ui.label(crate::i18n::tr("色（RRGGBB、空で既定）:"));
                     let mut color_changed = false;
-                    for (i, (k, label)) in [("color_highlight", "強調"), ("color_selection", "選択"), ("color_text", "文字"), ("color_background", "背景")].iter().enumerate() {
+                    for (i, (k, label)) in [("color_highlight", crate::i18n::tr("強調")), ("color_selection", crate::i18n::tr("選択")), ("color_text", crate::i18n::tr("文字")), ("color_background", crate::i18n::tr("背景"))].iter().enumerate() {
                         ui.label(*label);
                         if ui.add(egui::TextEdit::singleline(&mut self.settings_colors[i]).desired_width(64.0)).lost_focus() {
                             self.settings.set(k, self.settings_colors[i].trim().to_string());
@@ -2063,7 +2077,7 @@ impl eframe::App for App {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("表示倍率:");
+                    ui.label(crate::i18n::tr("表示倍率:"));
                     for z in [80u8, 90, 100, 110, 125, 150, 175, 200] {
                         if ui.selectable_label(self.zoom == z, format!("{z}%")).clicked() {
                             self.zoom = z;
@@ -2074,8 +2088,8 @@ impl eframe::App for App {
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("配色:");
-                    for (v, l) in [(0u8, "システム"), (1, "ライト"), (2, "ダーク")] {
+                    ui.label(crate::i18n::tr("配色:"));
+                    for (v, l) in [(0u8, crate::i18n::tr("システム")), (1, crate::i18n::tr("ライト")), (2, crate::i18n::tr("ダーク"))] {
                         if ui.selectable_label(self.theme == v, l).clicked() {
                             self.theme = v;
                             self.theme_applied = false;
@@ -2085,18 +2099,18 @@ impl eframe::App for App {
                     }
                 });
                 ui.separator();
-                ui.label("除外:");
-                changed |= ui.checkbox(&mut self.exclude_hidden, "隠しファイル/フォルダを除外").changed();
-                changed |= ui.checkbox(&mut self.exclude_system, "システムファイル/フォルダを除外").changed();
+                ui.label(crate::i18n::tr("除外:"));
+                changed |= ui.checkbox(&mut self.exclude_hidden, crate::i18n::tr("隠しファイル/フォルダを除外")).changed();
+                changed |= ui.checkbox(&mut self.exclude_system, crate::i18n::tr("システムファイル/フォルダを除外")).changed();
                 ui.horizontal(|ui| {
-                    ui.label("除外ファイル（ワイルドカード、; 区切り）:");
+                    ui.label(crate::i18n::tr("除外ファイル（ワイルドカード、; 区切り）:"));
                     if ui.text_edit_singleline(&mut self.settings_exclude_files).changed() {
                         self.exclude_files = self.settings_exclude_files.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
                         changed = true;
                     }
                 });
                 ui.horizontal(|ui| {
-                    ui.label("フォルダ索引の定期再走査（分、0 で無効）:");
+                    ui.label(crate::i18n::tr("フォルダ索引の定期再走査（分、0 で無効）:"));
                     if ui.text_edit_singleline(&mut self.settings_folder_rescan).changed() {
                         let mins: u64 = self.settings_folder_rescan.trim().parse().unwrap_or(0);
                         self.engine.folder_rescan_minutes.store(mins, Ordering::Relaxed);
@@ -2104,18 +2118,18 @@ impl eframe::App for App {
                         changed = true;
                     }
                 });
-                ui.label("除外フォルダ（1 行 1 パス、配下を結果から除く）:");
+                ui.label(crate::i18n::tr("除外フォルダ（1 行 1 パス、配下を結果から除く）:"));
                 if ui.add(egui::TextEdit::multiline(&mut self.settings_exclude_folders).desired_rows(2).desired_width(f32::INFINITY)).changed() {
                     self.exclude_folders = self.settings_exclude_folders.lines().map(|l| l.trim().trim_end_matches('\\').to_string()).filter(|l| !l.is_empty()).collect();
                     changed = true;
                 }
-                ui.label("対象フォルダの限定（1 行 1 パス、空なら全体。Everything の Include only）:");
+                ui.label(crate::i18n::tr("対象フォルダの限定（1 行 1 パス、空なら全体。Everything の Include only）:"));
                 if ui.add(egui::TextEdit::multiline(&mut self.settings_include_only).desired_rows(2).desired_width(f32::INFINITY)).changed() {
                     self.include_only = self.settings_include_only.lines().map(|l| l.trim().trim_end_matches('\\').to_string()).filter(|l| !l.is_empty()).collect();
                     changed = true;
                 }
                 ui.separator();
-                ui.label("カスタムフィルタ（1 行 1 件、`名前|検索式|マクロ`。マクロは検索語の中で `マクロ:` として使える。例: ソース|ext:rs;c;cpp;h|src）:");
+                ui.label(crate::i18n::tr("カスタムフィルタ（1 行 1 件、`名前|検索式|マクロ`。マクロは検索語の中で `マクロ:` として使える。例: ソース|ext:rs;c;cpp;h|src）:"));
                 if ui.add(egui::TextEdit::multiline(&mut self.settings_custom_filters).desired_rows(2).desired_width(f32::INFINITY)).changed() {
                     self.custom_filters = self.settings_custom_filters.lines().filter_map(parse_custom_filter).collect();
                     accio_query::parser::set_custom_macros(custom_macros(&self.custom_filters));
@@ -2125,10 +2139,10 @@ impl eframe::App for App {
                     changed = true;
                 }
                 ui.separator();
-                ui.label("フォルダ索引（NTFS 以外やネットワークのフォルダ。1 行 1 パス。再起動後に有効）:");
+                ui.label(crate::i18n::tr("フォルダ索引（NTFS 以外やネットワークのフォルダ。1 行 1 パス。再起動後に有効）:"));
                 changed |= ui.add(egui::TextEdit::multiline(&mut self.settings_folders).desired_rows(2).desired_width(f32::INFINITY)).changed();
                 ui.separator();
-                ui.label("列:");
+                ui.label(crate::i18n::tr("列:"));
                 ui.horizontal_wrapped(|ui| {
                     for c in Col::ALL {
                         let mut on = self.columns.contains(&c);
@@ -2144,16 +2158,16 @@ impl eframe::App for App {
                 });
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("索引を今すぐ保存").clicked() {
+                    if ui.button(crate::i18n::tr("索引を今すぐ保存")).clicked() {
                         self.engine.save_requested.fetch_add(1, Ordering::Relaxed);
-                        self.notify("索引を保存します");
+                        self.notify(crate::i18n::tr("索引を保存します"));
                     }
-                    if ui.button("索引を再構築（全ボリューム再スキャン）").clicked() {
+                    if ui.button(crate::i18n::tr("索引を再構築（全ボリューム再スキャン）")).clicked() {
                         self.engine.reindex_requested.fetch_add(1, Ordering::Relaxed);
-                        self.notify("再索引を開始します（スキャン中も検索できます）");
+                        self.notify(crate::i18n::tr("再索引を開始します（スキャン中も検索できます）"));
                     }
                 });
-                ui.label(format!("設定ファイル: {}", self.settings_path.display()));
+                ui.label(crate::i18n::trf("設定ファイル: {}", &[&(self.settings_path.display())]));
                 if changed {
                     self.settings.set("run_in_background", self.run_in_background as u8);
                     self.settings.set("hotkey", self.settings_hotkey.clone());
@@ -2190,15 +2204,15 @@ impl eframe::App for App {
         if let Some(mut b) = self.bulk.take() {
             let mut keep = true;
             let mut apply = false;
-            egui::Window::new("一括リネーム").collapsible(false).resizable(true).default_width(700.0).show(ctx, |ui| {
-                ui.label(format!("{} 件", b.paths.len()));
+            egui::Window::new(crate::i18n::tr("一括リネーム")).collapsible(false).resizable(true).default_width(700.0).show(ctx, |ui| {
+                ui.label(crate::i18n::trf("{} 件", &[&(b.paths.len())]));
                 ui.horizontal(|ui| {
-                    ui.label("検索:");
+                    ui.label(crate::i18n::tr("検索:"));
                     ui.add(egui::TextEdit::singleline(&mut b.find).desired_width(220.0));
-                    ui.label("置換:");
+                    ui.label(crate::i18n::tr("置換:"));
                     ui.add(egui::TextEdit::singleline(&mut b.replace).desired_width(220.0));
-                    ui.checkbox(&mut b.regex, "正規表現");
-                    ui.checkbox(&mut b.match_case, "大小区別");
+                    ui.checkbox(&mut b.regex, crate::i18n::tr("正規表現"));
+                    ui.checkbox(&mut b.match_case, crate::i18n::tr("大小区別"));
                 });
                 let (prev, err) = b.preview();
                 b.error = err;
@@ -2221,10 +2235,10 @@ impl eframe::App for App {
                     });
                 });
                 ui.horizontal(|ui| {
-                    if ui.add_enabled(changed > 0 && b.error.is_none(), egui::Button::new(format!("{changed} 件を変更"))).clicked() {
+                    if ui.add_enabled(changed > 0 && b.error.is_none(), egui::Button::new(crate::i18n::trf("{} 件を変更", &[&changed]))).clicked() {
                         apply = true;
                     }
-                    if ui.button("キャンセル").clicked() {
+                    if ui.button(crate::i18n::tr("キャンセル")).clicked() {
                         keep = false;
                     }
                 });
@@ -2247,7 +2261,7 @@ impl eframe::App for App {
                         }
                     }
                 }
-                self.notify(format!("{ok} 件を変更しました{}", if failed > 0 { format!("（{failed} 件失敗）") } else { String::new() }));
+                self.notify(crate::i18n::trf("{} 件を変更しました{}", &[&ok, &(if failed > 0 { crate::i18n::trf("（{} 件失敗）", &[&failed]) } else { String::new() })]));
                 self.multi.clear();
                 keep = false;
             }
@@ -2259,19 +2273,19 @@ impl eframe::App for App {
         // ---- ごみ箱確認 ----
         if let Some(paths) = self.confirm_delete.clone() {
             let mut decided: Option<bool> = None;
-            egui::Window::new("ごみ箱へ移動").collapsible(false).resizable(false).show(ctx, |ui| {
-                ui.label(format!("{} 件をごみ箱へ移動します。", paths.len()));
+            egui::Window::new(crate::i18n::tr("ごみ箱へ移動")).collapsible(false).resizable(false).show(ctx, |ui| {
+                ui.label(crate::i18n::trf("{} 件をごみ箱へ移動します。", &[&(paths.len())]));
                 for p in paths.iter().take(8) {
                     ui.monospace(p);
                 }
                 if paths.len() > 8 {
-                    ui.label(format!("… 他 {} 件", paths.len() - 8));
+                    ui.label(crate::i18n::trf("… 他 {} 件", &[&(paths.len() - 8)]));
                 }
                 ui.horizontal(|ui| {
-                    if ui.button("移動する").clicked() {
+                    if ui.button(crate::i18n::tr("移動する")).clicked() {
                         decided = Some(true);
                     }
-                    if ui.button("キャンセル").clicked() {
+                    if ui.button(crate::i18n::tr("キャンセル")).clicked() {
                         decided = Some(false);
                     }
                 });
@@ -2291,7 +2305,7 @@ impl eframe::App for App {
                             log::error!("ごみ箱へ移動できない (code {e})");
                         }
                     });
-                    self.notify(format!("{n} 件をごみ箱へ移動しました"));
+                    self.notify(crate::i18n::trf("{} 件をごみ箱へ移動しました", &[&n]));
                     self.multi.clear();
                 }
             }
@@ -2302,9 +2316,9 @@ impl eframe::App for App {
             ui.horizontal_wrapped(|ui| {
                 match &result {
                     Some(r) => {
-                        let mut s = format!("{} 件 ({} ファイル, {} フォルダ)  {:.0} ms", fmt_count(r.total), fmt_count(r.files), fmt_count(r.folders), r.elapsed_ms);
+                        let mut s = crate::i18n::trf("{} 件 ({} ファイル, {} フォルダ)  {:.0} ms", &[&(fmt_count(r.total)), &(fmt_count(r.files)), &(fmt_count(r.folders)), &(r.elapsed_ms)]);
                         if !r.sorted {
-                            s.push_str("  [件数が多いため未ソート]");
+                            s.push_str(crate::i18n::tr("  [件数が多いため未ソート]"));
                         }
                         ui.label(s);
                         for w in &r.warnings {
@@ -2321,27 +2335,27 @@ impl eframe::App for App {
                 ui.separator();
                 let st = self.engine.status.lock();
                 if st.discovering {
-                    ui.label("ボリューム検出中…");
+                    ui.label(crate::i18n::tr("ボリューム検出中…"));
                 }
                 if !st.message.is_empty() {
                     ui.colored_label(Color32::LIGHT_RED, &st.message);
                 }
                 for v in &st.volumes {
                     let (txt, col) = match &v.state {
-                        VolState::Pending => (format!("{} 待機", v.root), Color32::GRAY),
-                        VolState::Loading => (format!("{} 読込中", v.root), Color32::from_rgb(200, 160, 0)),
+                        VolState::Pending => (crate::i18n::trf("{} 待機", &[&(v.root)]), Color32::GRAY),
+                        VolState::Loading => (crate::i18n::trf("{} 読込中", &[&(v.root)]), Color32::from_rgb(200, 160, 0)),
                         VolState::Scanning { done, total } => (
-                            format!("{} スキャン {:.0}% ({})", v.root, *done as f64 / (*total).max(1) as f64 * 100.0, fmt_count(v.entries)),
+                            crate::i18n::trf("{} スキャン {:.0}% ({})", &[&(v.root), &(*done as f64 / (*total).max(1) as f64 * 100.0), &(fmt_count(v.entries))]),
                             Color32::from_rgb(60, 140, 240),
                         ),
                         VolState::Ready => (format!("{} {}", v.root, fmt_count(v.entries)), Color32::from_rgb(40, 150, 60)),
-                        VolState::Error(e) => (format!("{} エラー: {e}", v.root), Color32::LIGHT_RED),
+                        VolState::Error(e) => (crate::i18n::trf("{} エラー: {}", &[&(v.root), &e]), Color32::LIGHT_RED),
                     };
-                    ui.colored_label(col, txt).on_hover_text(format!("USN 反映 {} 件", v.usn_events));
+                    ui.colored_label(col, txt).on_hover_text(crate::i18n::trf("USN 反映 {} 件", &[&(v.usn_events)]));
                 }
                 if let Some(d) = st.startup_ready_at {
                     ui.separator();
-                    ui.label(format!("検索可能まで {:.2}s", d.as_secs_f64()));
+                    ui.label(crate::i18n::trf("検索可能まで {:.2}s", &[&(d.as_secs_f64())]));
                 }
                 if let Some(hit) = self.selected {
                     if let Some((p, _)) = self.hit_path(hit) {
@@ -2352,7 +2366,7 @@ impl eframe::App for App {
                 if let Some(t) = &self.tray {
                     if !t.hotkey_label.is_empty() {
                         ui.separator();
-                        ui.label(format!("ホットキー {}", t.hotkey_label)).on_hover_text("accio.ini の hotkey= で変更（空で無効）");
+                        ui.label(crate::i18n::trf("ホットキー {}", &[&(t.hotkey_label)])).on_hover_text(crate::i18n::tr("accio.ini の hotkey= で変更（空で無効）"));
                     }
                 }
             });
@@ -2369,7 +2383,7 @@ impl eframe::App for App {
             }
             egui::SidePanel::right("preview").resizable(true).default_width(360.0).min_width(160.0).show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("プレビュー (Alt+P)").strong());
+                    ui.label(RichText::new(crate::i18n::tr("プレビュー (Alt+P)")).strong());
                     if ui.small_button("×").clicked() {
                         self.show_preview = false;
                         self.settings.set("preview", 0u8);
@@ -2379,7 +2393,7 @@ impl eframe::App for App {
                 let loaded = self.previewer.result.load_full();
                 match loaded.as_deref() {
                     None => {
-                        ui.label(RichText::new(if self.selected.is_some() { "読み込み中…" } else { "ファイルを選択してください" }).color(Color32::GRAY));
+                        ui.label(RichText::new(if self.selected.is_some() { crate::i18n::tr("読み込み中…") } else { crate::i18n::tr("ファイルを選択してください") }).color(Color32::GRAY));
                     }
                     Some(l) => {
                         ui.label(RichText::new(l.path.rsplit('\\').next().unwrap_or(&l.path)).strong());
@@ -2441,7 +2455,7 @@ impl eframe::App for App {
         if self.thumb_size > 0 {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let Some(res) = result.clone() else {
-                    ui.centered_and_justified(|ui| ui.label("索引を準備しています…"));
+                    ui.centered_and_justified(|ui| ui.label(crate::i18n::tr("索引を準備しています…")));
                     return;
                 };
                 let vols = self.engine.index.snapshot();
@@ -2528,7 +2542,7 @@ impl eframe::App for App {
         if self.thumb_size == 0 {
         egui::CentralPanel::default().show(ctx, |ui| {
             let Some(res) = result.clone() else {
-                ui.centered_and_justified(|ui| ui.label("索引を準備しています…"));
+                ui.centered_and_justified(|ui| ui.label(crate::i18n::tr("索引を準備しています…")));
                 return;
             };
             let vols = self.engine.index.snapshot();
@@ -2598,7 +2612,7 @@ impl eframe::App for App {
                                 header_sort = c.sort_key();
                             }
                             r.context_menu(|ui| {
-                                ui.label("列の表示");
+                                ui.label(crate::i18n::tr("列の表示"));
                                 for cc in Col::ALL {
                                     let mut on = columns.contains(&cc);
                                     if ui.checkbox(&mut on, cc.label()).clicked() {
@@ -2711,47 +2725,47 @@ impl eframe::App for App {
                         }
                         r.context_menu(|ui| {
                             let full = if data.path.is_empty() { data.name.clone() } else { format!("{}\\{}", data.path, data.name) };
-                            if ui.button("開く (Enter)").clicked() {
+                            if ui.button(crate::i18n::tr("開く (Enter)")).clicked() {
                                 shell::open(&full);
                                 ui.close();
                             }
-                            if ui.button("パスを開く (Ctrl+Enter)").clicked() {
+                            if ui.button(crate::i18n::tr("パスを開く (Ctrl+Enter)")).clicked() {
                                 shell::open_path(&full);
                                 ui.close();
                             }
-                            if ui.button("コピー (Ctrl+C)").clicked() {
+                            if ui.button(crate::i18n::tr("コピー (Ctrl+C)")).clicked() {
                                 copy_files_req = true;
                                 ui.close();
                             }
-                            if ui.button("フルパスをコピー (Ctrl+Shift+C)").clicked() {
+                            if ui.button(crate::i18n::tr("フルパスをコピー (Ctrl+Shift+C)")).clicked() {
                                 ui.ctx().copy_text(full.clone());
                                 ui.close();
                             }
-                            if ui.button(if multi.len() > 1 { "一括リネーム (F2)" } else { "名前の変更 (F2)" }).clicked() {
+                            if ui.button(if multi.len() > 1 { crate::i18n::tr("一括リネーム (F2)") } else { crate::i18n::tr("名前の変更 (F2)") }).clicked() {
                                 rename_req = Some(hit);
                                 ui.close();
                             }
-                            if ui.button("Explorer のメニュー…").clicked() {
+                            if ui.button(crate::i18n::tr("Explorer のメニュー…")).clicked() {
                                 shell_menu_req = true;
                                 ui.close();
                             }
-                            if ui.button("ごみ箱へ移動 (Del)").clicked() {
+                            if ui.button(crate::i18n::tr("ごみ箱へ移動 (Del)")).clicked() {
                                 delete_req = true;
                                 ui.close();
                             }
-                            if ui.button("名前をコピー").clicked() {
+                            if ui.button(crate::i18n::tr("名前をコピー")).clicked() {
                                 ui.ctx().copy_text(name.clone());
                                 ui.close();
                             }
-                            if is_dir && ui.button("このフォルダの容量内訳").clicked() {
+                            if is_dir && ui.button(crate::i18n::tr("このフォルダの容量内訳")).clicked() {
                                 du_into = Some(full.clone());
                                 ui.close();
                             }
-                            if !is_dir && ui.button("管理者として実行 (Ctrl+Shift+Enter)").clicked() {
+                            if !is_dir && ui.button(crate::i18n::tr("管理者として実行 (Ctrl+Shift+Enter)")).clicked() {
                                 shell::open_as_admin(&full);
                                 ui.close();
                             }
-                            if ui.button("プロパティ (Alt+Enter)").clicked() {
+                            if ui.button(crate::i18n::tr("プロパティ (Alt+Enter)")).clicked() {
                                 shell::properties(&full);
                                 ui.close();
                             }
@@ -2782,8 +2796,8 @@ impl eframe::App for App {
                         let new_name = text.trim().to_string();
                         if !new_name.is_empty() {
                             match shell::rename(&path, &new_name) {
-                                Ok(()) => self.notify(format!("名前を変更しました: {new_name}")),
-                                Err(e) => self.notify(format!("名前を変更できません: {e}")),
+                                Ok(()) => self.notify(crate::i18n::trf("名前を変更しました: {}", &[&new_name])),
+                                Err(e) => self.notify(crate::i18n::trf("名前を変更できません: {}", &[&e])),
                             }
                         }
                     }
@@ -2811,7 +2825,7 @@ impl eframe::App for App {
         if copy_files_req {
             let paths = self.selected_paths();
             if !paths.is_empty() && shell::copy_files_to_clipboard(&paths) {
-                self.notify(format!("{} 件のファイルをコピーしました", paths.len()));
+                self.notify(crate::i18n::trf("{} 件のファイルをコピーしました", &[&(paths.len())]));
             }
         }
         if let Some((i, pos)) = drag_start {
@@ -2845,7 +2859,7 @@ impl eframe::App for App {
             let paths = self.selected_paths();
             if !paths.is_empty() {
                 if let Err(e) = crate::shellmenu::show(self.hwnd, &paths) {
-                    self.notify(format!("シェルメニューを表示できません: {e}"));
+                    self.notify(crate::i18n::trf("シェルメニューを表示できません: {}", &[&e]));
                 }
             }
         }

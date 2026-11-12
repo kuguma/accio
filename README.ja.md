@@ -10,7 +10,11 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="docs/usage.md">使い方</a> · <a href="docs/usage.en.md">Usage</a> · <a href="https://github.com/kuguma/accio/releases">リリース</a>
+  <a href="README.md">English</a> | <b>日本語</b>
+</p>
+
+<p align="center">
+  <a href="docs/usage.md">使い方</a> · <a href="docs/development.md">開発</a> · <a href="https://github.com/kuguma/accio/releases">リリース</a>
 </p>
 
 ![accio のスクリーンショット](docs/images/screenshot.png)
@@ -47,13 +51,13 @@ Windows 上の Rust ツールチェーンが必要です。`cargo test` は管�
 | ファイル操作 | 開く、パスを開く、コピー、パスのコピー、名前の変更、一括リネーム、ごみ箱、Explorer のコンテキストメニュー、ドラッグ＆ドロップ、プロパティ、管理者として実行 |
 | 索引 | NTFS の MFT スキャン＋USN ジャーナル、ReFS（ディレクトリ列挙＋USN V3）、任意フォルダ/UNC のフォルダ索引と変更監視、除外と対象限定、ハードリンク、フォルダサイズ |
 | 連携 | IPC v1/v2/v3、HTTP サーバー（JSON/HTML、Basic 認証）、ETP/FTP サーバー、`es:` URL プロトコル、Explorer のフォルダ右クリック、EFU の書き出しとファイルリスト |
-| アプリ | トレイ（ダブルクリックで表示）、グローバルホットキー、自動起動、セッション復元、日英ドキュメント、配色（システム/ライト/ダーク）、フォントと色 |
+| アプリ | トレイ（ダブルクリックで表示）、グローバルホットキー、自動起動、セッション復元、日英 UI とドキュメント、配色（システム/ライト/ダーク）、フォントと色 |
 
 キー操作・検索構文・コマンドライン・`accio.ini` の全キーは [docs/usage.md](docs/usage.md) にあります。
 
 ## 状況
 
-accio は 0.x です。UI の言語は現在日本語のみで、英語 UI は予定しています。0.x の間は索引形式の互換性を保ちません（索引は作り直されるだけです）。
+accio は 0.x です。UI は日本語と英語に対応しています（Windows の表示言語に従い、`accio.ini` の `lang=` か設定画面で切り替え）。0.x の間は索引形式の互換性を保ちません（索引は作り直されるだけです）。
 
 ## ライセンス
 
