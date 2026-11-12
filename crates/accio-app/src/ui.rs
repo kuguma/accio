@@ -581,6 +581,47 @@ const FLOAT_ROWS_MAX: usize = 10;
 const BAR_H: f32 = 52.0;
 const ROW_H: f32 = 46.0;
 
+/// 検索バーのアイコン。すべて同じ枠（36pt、角丸 8）、同じ大きさ（18pt）、同じ線幅・色の線画で描く
+#[derive(Clone, Copy)]
+enum BarIcon {
+    Menu,
+    Pin,
+}
+const ICON_BTN: f32 = 36.0;
+const ICON_SIZE: f32 = 18.0;
+const ICON_STROKE: f32 = 1.8;
+
+/// 検索バーのアイコンボタン。`active` は背景を選択色にする（ピン留め中など）
+fn icon_button(ui: &mut egui::Ui, icon: BarIcon, active: bool, tooltip: &str) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ICON_BTN, ICON_BTN), egui::Sense::click());
+    let v = ui.visuals().clone();
+    let p = ui.painter();
+    if active {
+        p.rect_filled(rect, 8.0, v.selection.bg_fill);
+    } else if resp.hovered() || resp.is_pointer_button_down_on() {
+        p.rect_filled(rect, 8.0, v.widgets.hovered.bg_fill);
+    }
+    let color = if active { v.selection.stroke.color } else { v.text_color() };
+    let stroke = egui::Stroke::new(ICON_STROKE, color);
+    let r = egui::Rect::from_center_size(rect.center(), egui::vec2(ICON_SIZE, ICON_SIZE));
+    let (w, h) = (r.width(), r.height());
+    let at = |fx: f32, fy: f32| egui::pos2(r.left() + w * fx, r.top() + h * fy);
+    match icon {
+        BarIcon::Menu => {
+            for fy in [0.2, 0.5, 0.8] {
+                p.line_segment([at(0.0, fy), at(1.0, fy)], stroke);
+            }
+        }
+        BarIcon::Pin => {
+            // 画鋲: 頭（横棒）、胴（台形）、針（縦線）
+            p.line_segment([at(0.22, 0.08), at(0.78, 0.08)], stroke);
+            p.add(egui::Shape::closed_line(vec![at(0.32, 0.08), at(0.68, 0.08), at(0.82, 0.58), at(0.18, 0.58)], stroke));
+            p.line_segment([at(0.5, 0.58), at(0.5, 1.0)], stroke);
+        }
+    }
+    resp.on_hover_text(tooltip)
+}
+
 /// 検索バー/ハンバーガーから update() へ返す操作
 #[derive(Default)]
 struct BarActions {
@@ -1535,16 +1576,17 @@ impl App {
         let popup_open_now = self.popup_or_modal_open(ctx);
         ui.horizontal(|ui| {
             ui.set_min_height(BAR_H);
-            ui.add_space(6.0);
-            let menu_label = RichText::new("≡").size(24.0);
-            ui.menu_button(menu_label, |ui| self.hamburger(ctx, ui, act)).response.on_hover_text(crate::i18n::tr("検索の設定と表示"));
-            ui.add_space(2.0);
+            ui.add_space(8.0);
+            let menu = icon_button(ui, BarIcon::Menu, false, crate::i18n::tr("検索の設定と表示"));
+            egui::Popup::menu(&menu).show(|ui| self.hamburger(ctx, ui, act));
+            ui.add_space(4.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(10.0);
-                let pin = ui.selectable_label(self.pinned, crate::i18n::tr("ピン留め")).on_hover_text(crate::i18n::tr("ピン留めすると通常のウィンドウになり、他を操作しても閉じない (Ctrl+Shift+P)"));
+                ui.add_space(8.0);
+                let pin = icon_button(ui, BarIcon::Pin, self.pinned, crate::i18n::tr("ピン留めすると通常のウィンドウになり、他を操作しても閉じない (Ctrl+Shift+P)"));
                 if pin.clicked() {
                     act.toggle_pin = true;
                 }
+                ui.add_space(4.0);
                 if let Some(r) = result.as_ref() {
                     if !self.nothing_to_search() {
                         let mut s = crate::i18n::trf("{} 件", &[&(fmt_count(r.total))]);
