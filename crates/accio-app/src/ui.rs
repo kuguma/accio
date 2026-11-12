@@ -613,10 +613,13 @@ fn icon_button(ui: &mut egui::Ui, icon: BarIcon, active: bool, tooltip: &str) ->
             }
         }
         BarIcon::Pin => {
-            // 画鋲: 頭（横棒）、胴（台形）、針（縦線）
-            p.line_segment([at(0.22, 0.08), at(0.78, 0.08)], stroke);
-            p.add(egui::Shape::closed_line(vec![at(0.32, 0.08), at(0.68, 0.08), at(0.82, 0.58), at(0.18, 0.58)], stroke));
-            p.line_segment([at(0.5, 0.58), at(0.5, 1.0)], stroke);
+            // 画鋲（斜め 45°、頭が右上、針は左下へ）: 直立の形を中心まわりに回してから描く
+            let c = r.center();
+            let rot = egui::emath::Rot2::from_angle(std::f32::consts::FRAC_PI_4);
+            let q = |fx: f32, fy: f32| c + rot * (at(fx, fy) - c);
+            p.line_segment([q(0.22, 0.06), q(0.78, 0.06)], stroke);
+            p.add(egui::Shape::closed_line(vec![q(0.32, 0.06), q(0.68, 0.06), q(0.82, 0.56), q(0.18, 0.56)], stroke));
+            p.line_segment([q(0.5, 0.56), q(0.5, 1.0)], stroke);
         }
     }
     resp.on_hover_text(tooltip)
