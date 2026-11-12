@@ -318,17 +318,23 @@ fn main() -> eframe::Result<()> {
         let (w, h) = img.dimensions();
         egui::IconData { rgba: img.into_raw(), width: w, height: h }
     };
+    // 浮動パネル（ピン留め解除）は枠なし・常に手前・透明背景。透明は作成時にしか決められないので常に有効にする
+    let pinned = settings.bool("pinned", true);
     let mut viewport = egui::ViewportBuilder::default()
         .with_title("accio")
         .with_icon(std::sync::Arc::new(icon))
-        .with_inner_size([geom("window_w", 1200.0).max(600.0), geom("window_h", 760.0).max(300.0)])
-        .with_min_inner_size([600.0, 300.0])
+        .with_transparent(true)
         .with_visible(!cli.startup);
-    if let (Some(x), Some(y)) = (settings.get("window_x").and_then(|v| v.parse::<f32>().ok()), settings.get("window_y").and_then(|v| v.parse::<f32>().ok())) {
-        viewport = viewport.with_position([x, y]);
-    }
-    if settings.bool("window_maximized", false) {
-        viewport = viewport.with_maximized(true);
+    if pinned {
+        viewport = viewport.with_inner_size([geom("window_w", 1200.0).max(600.0), geom("window_h", 760.0).max(300.0)]).with_min_inner_size([600.0, 300.0]);
+        if let (Some(x), Some(y)) = (settings.get("window_x").and_then(|v| v.parse::<f32>().ok()), settings.get("window_y").and_then(|v| v.parse::<f32>().ok())) {
+            viewport = viewport.with_position([x, y]);
+        }
+        if settings.bool("window_maximized", false) {
+            viewport = viewport.with_maximized(true);
+        }
+    } else {
+        viewport = viewport.with_decorations(false).with_always_on_top().with_resizable(false).with_inner_size([760.0, 100.0]);
     }
     let options = eframe::NativeOptions { viewport, ..Default::default() };
     eframe::run_native(

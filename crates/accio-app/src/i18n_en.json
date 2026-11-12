@@ -179,5 +179,16 @@
 "シェルメニューを表示できません: {e}": "Cannot show the shell menu: {e}",
 "言語 / Language:": "Language / 言語:",
 "自動": "Auto",
-"（再起動後に有効）": "(takes effect after restart)"
+"（再起動後に有効）": "(takes effect after restart)",
+"ピン留め": "Pin",
+"ピン留め (Ctrl+Shift+P)": "Pin (Ctrl+Shift+P)",
+"ピン留めすると通常のウィンドウになり、他を操作しても閉じない (Ctrl+Shift+P)": "Pinned, accio stays open as a normal window while you work elsewhere (Ctrl+Shift+P)",
+"ファイルリストを閉じる: {} (Ctrl+Shift+O)": "Close file list: {} (Ctrl+Shift+O)",
+"ファイルリストを開く (Ctrl+O)": "Open file list (Ctrl+O)",
+"フィルタ: {}": "Filter: {}",
+"並べ替え: {} {}": "Sort: {} {}",
+"検索": "Search",
+"検索の設定と表示": "Search options and view",
+"ダイアクリティカルマークを区別": "Match diacritics",
+"終了 (Ctrl+Q)": "Exit (Ctrl+Q)"
 }

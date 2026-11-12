@@ -12,6 +12,12 @@ Everything 1.4 の操作がそのまま通じるように作ってある。こ�
 - 設定とデータは `%LOCALAPPDATA%\accio`（`accio.ini`、`*.accio` 索引、`accio.log`、`Run History.csv`）。
 - UI を昇格させたくないときは設定の「昇格インデクサ」を使う（`-indexer` を最高権限のタスクで常駐させ、UI は `use_indexer=1` で索引ファイルを追従する）。
 
+## 画面
+
+- 画面は検索バーと結果だけ。検索の設定（大小区別・パス一致・正規表現・ドライブ・並べ替え・フィルタ・表示・ブックマーク・設定…）はすべて検索バー左端のハンバーガー（≡）に入っている。
+- **ピン留め**（既定）: 通常のウィンドウ。列つきの表、プレビュー、サムネイル、タブが使え、ファイルブラウザとして置いておける。
+- **ピン留めを外す**（Ctrl+Shift+P、または検索バー右端の「ピン留め」）: Spotlight 風の浮動パネルになる。画面上部中央に検索窓だけが出て、入力すると下に結果が伸びる。Esc か、他の場所を触る（フォーカスを失う）と隠れ、ホットキーかトレイで呼び戻す。
+
 ## キーボード
 
 | キー | 動作 |
@@ -34,10 +40,11 @@ Everything 1.4 の操作がそのまま通じるように作ってある。こ�
 | Alt+P | プレビューペイン |
 | Ctrl+Shift+1 / 2 / 3 / 6 | サムネイル（小 / 中 / 大） / 詳細表示 |
 | Ctrl+P | 設定 |
+| Ctrl+Shift+P | ピン留めの切り替え（通常ウィンドウ / 浮動パネル） |
 | F5 | 再検索（インデクサ追従時は索引の再読込） |
 | Ctrl+Q | 終了 |
 | ctrl+alt+a（グローバル） / トレイアイコンのダブルクリック | ウィンドウの表示/非表示（設定で変更） |
-| ツールバー「ドライブ」 | 検索対象のドライブを選ぶ（`drives_off=` に保存） |
+| ハンバーガー「ドライブ」 | 検索対象のドライブを選ぶ（`drives_off=` に保存） |
 
 ## 検索構文
 
@@ -96,6 +103,7 @@ accio [options]
 | `lang=ja|en` | UI の言語（空なら Windows の表示言語に従う。再起動後に有効） |
 | `run_in_background=1` `hotkey=ctrl+alt+a` | 閉じる/Esc で常駐、グローバルホットキー |
 | `restore_session=1` | 終了時のタブと検索語を復元 |
+| `pinned=1` | ピン留め（通常のウィンドウ）。0 なら Spotlight 風の浮動パネルで起動 |
 | `use_indexer=1` | 別プロセスのインデクサの索引を追従する（UI は昇格しない） |
 | `http_server=1` `http_port=80` `http_bind=` `http_user=` `http_password=` | HTTP サーバー（Everything 互換の `?search=&json=1` など、Basic 認証） |
 | `etp_server=1` `etp_port=21` `etp_bind=` `etp_user=` `etp_password=` `etp_allow_download=1` | ETP/FTP サーバー（Everything の `EVERYTHING` コマンド群） |
