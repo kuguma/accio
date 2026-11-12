@@ -1,8 +1,8 @@
 """X (Twitter) 投稿用バナー 1600x900 を PIL で描く。"""
-import sys
+import os, sys
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-R = r'C:\repos\github.com\kuguma\accio'
+R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = sys.argv[1]
 LANG = sys.argv[2] if len(sys.argv) > 2 else 'ja'
 SHOT = sys.argv[3] if len(sys.argv) > 3 else R + r'\docs\images\screenshot.png'
