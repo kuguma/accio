@@ -19,6 +19,10 @@
 
 ![accio screenshot](docs/images/screenshot.png)
 
+<p align="center"><img src="docs/images/float.png" width="600" alt="accio as a floating panel" /></p>
+
+<p align="center"><sub>Pinned (top): a normal window that works as a file browser. Unpinned (bottom): a Spotlight-style panel that hides when you click elsewhere.</sub></p>
+
 ## Why
 
 Everything is the fastest file search on Windows, but it can freeze and start slowly on large volumes. accio keeps everything that makes Everything good (instant incremental search, the full query syntax, the IPC/HTTP/ETP interfaces that other tools rely on) and fixes the rest:
@@ -68,7 +72,8 @@ Requires a Rust toolchain on Windows. `cargo test` runs the whole suite without 
 | Files | Open, open path, copy, copy path, rename, bulk rename, recycle, Explorer context menu, drag and drop, properties, run as administrator |
 | Index | NTFS MFT scan + USN journal, ReFS (directory enumeration + USN V3), folder indexes for any path or UNC share with change watching, exclusions and include-only, hard links, folder sizes |
 | Integration | IPC v1/v2/v3, HTTP server (JSON/HTML, Basic auth), ETP/FTP server, `es:` URL protocol, Explorer folder context menu, EFU export and file lists |
-| App | Tray icon with double-click to show, global hotkey, autostart, session restore, English/Japanese UI and docs, light/dark/system theme, fonts and colors |
+| UI | Search bar and results only; every option lives in the hamburger menu. Pinned window or Spotlight-style floating panel (Ctrl+Shift+P), light/dark/system theme, fonts and colors |
+| App | Tray icon with double-click to show, global hotkey, autostart, session restore, English/Japanese UI and docs |
 
 See [docs/usage.en.md](docs/usage.en.md) for keyboard shortcuts, the query syntax, command-line options and every `accio.ini` key.
 
