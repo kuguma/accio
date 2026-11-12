@@ -1491,7 +1491,8 @@ impl App {
     /// 浮動パネルの高さ（内容に合わせて伸縮する）
     fn float_height(&self, ctx: &egui::Context, n_hits: usize) -> f32 {
         // メニューが開いている間は、その分の余白（透明）を下に取る。ウィンドウの外には描けない
-        let popup_room = if egui::Popup::is_any_open(ctx) { FLOAT_MARGIN * 2.0 + 620.0 } else { 0.0 };
+        let needs_room = egui::Popup::is_any_open(ctx) || self.confirm_delete.is_some() || self.bulk.is_some() || self.show_bookmarks || self.renaming.is_some();
+        let popup_room = if needs_room { FLOAT_MARGIN * 2.0 + 620.0 } else { 0.0 };
         if self.float_content_h > 0.0 {
             return (FLOAT_MARGIN * 2.0 + self.float_content_h).max(popup_room);
         }
@@ -2027,12 +2028,18 @@ impl eframe::App for App {
         let mut extend = false;
         let mut toggle_pin = false;
         let popup_open = self.popup_or_modal_open(ctx);
+        // 検索窓のキャレットが文末より手前（または範囲選択中）なら Delete は文字の削除に使う。
+        // 文末にあるときだけ、選択した結果をごみ箱へ送る
+        let caret_in_text = egui::TextEdit::load_state(ctx, self.search_id)
+            .and_then(|st| st.cursor.char_range())
+            .map(|r| r.primary.index != r.secondary.index || r.primary.index < self.query.chars().count())
+            .unwrap_or(false);
         if !popup_open {
             ctx.input_mut(|i| {
                 if i.consume_key(Modifiers::NONE, Key::Escape) || i.consume_key(Modifiers::ALT, Key::Home) {
                     clear = true;
                 }
-                if i.consume_key(Modifiers::NONE, Key::Delete) {
+                if !caret_in_text && i.consume_key(Modifiers::NONE, Key::Delete) {
                     delete_sel = true;
                 }
                 if i.consume_key(Modifiers::NONE, Key::F2) {
@@ -2413,7 +2420,7 @@ impl eframe::App for App {
             let mut pick: Option<String> = None;
             let mut remove: Option<usize> = None;
             let mut add = false;
-            egui::Window::new(crate::i18n::tr("ブックマーク")).open(&mut open).resizable(true).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("ブックマーク")).open(&mut open).resizable(true).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 if ui.button(crate::i18n::trf("現在の検索を追加: {}", &[&(if self.query.is_empty() { crate::i18n::tr("(空)") } else { &self.query })])).clicked() && !self.query.is_empty() {
                     add = true;
                 }
@@ -2685,7 +2692,7 @@ impl eframe::App for App {
         if let Some(mut b) = self.bulk.take() {
             let mut keep = true;
             let mut apply = false;
-            egui::Window::new(crate::i18n::tr("一括リネーム")).collapsible(false).resizable(true).default_width(700.0).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("一括リネーム")).collapsible(false).resizable(true).default_width(700.0).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 ui.label(crate::i18n::trf("{} 件", &[&(b.paths.len())]));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::tr("検索:"));
@@ -2754,7 +2761,7 @@ impl eframe::App for App {
         // ---- ごみ箱確認 ----
         if let Some(paths) = self.confirm_delete.clone() {
             let mut decided: Option<bool> = None;
-            egui::Window::new(crate::i18n::tr("ごみ箱へ移動")).collapsible(false).resizable(false).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("ごみ箱へ移動")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 ui.label(crate::i18n::trf("{} 件をごみ箱へ移動します。", &[&(paths.len())]));
                 for p in paths.iter().take(8) {
                     ui.monospace(p);
