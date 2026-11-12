@@ -1,0 +1,16 @@
+[package]
+name = "accio-index"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "インメモリ索引: カラム構造・名前アリーナ・永続化・USN 差分適用・フォルダサイズ集計"
+
+[dependencies]
+accio-ntfs = { path = "../accio-ntfs" }
+rayon.workspace = true
+parking_lot.workspace = true
+anyhow.workspace = true
+log.workspace = true
+zstd.workspace = true
+
+[dev-dependencies]

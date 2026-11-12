@@ -1,0 +1,19 @@
+[tasks.test]
+description = "ワークスペースのテスト（NTFS テストイメージによる E2E を含む、管理者権限不要）"
+run = "cargo test"
+
+[tasks.bench]
+description = "合成 1500 万件で検索/保存/読込のレイテンシを計測"
+run = "cargo run --release -p accio-query --example bench -- 15000000"
+
+[tasks.build]
+description = "リリースビルド（target/release/accio.exe、管理者マニフェスト付き）"
+run = "cargo build --release -p accio"
+
+[tasks.run]
+description = 'リリースビルドして昇格起動（UAC）。ログは %LOCALAPPDATA%/accio/accio.log'
+run = ["cargo build --release -p accio", "powershell -NoProfile -Command \"Start-Process -Verb RunAs target/release/accio.exe\""]
+
+[tasks.clippy]
+description = "clippy（警告をエラー扱い）"
+run = "cargo clippy --workspace --all-targets -- -D warnings"

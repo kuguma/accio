@@ -1,0 +1,17 @@
+accio
+Copyright (c) 2026 kuguma. Licensed under the MIT License (see LICENSE).
+
+Third-party material included in this repository:
+
+- testdata/testfs1.ntfs
+  A small NTFS volume image used by the test suite. Taken from the `ntfs` crate
+  (https://github.com/ColinFinck/ntfs) by Colin Finck, licensed under
+  MIT OR Apache-2.0.
+
+- crates/accio-app/assets/icon
+  Generated from a parametric monochrome icon concept (MONOFORM, concept 022 "A-PULL").
+  The generator (build.py) and the resulting SVG/PNG/ICO files are part of accio and
+  licensed under the MIT License.
+
+Runtime dependencies are pulled from crates.io; see Cargo.lock for the exact set
+and their respective licenses.

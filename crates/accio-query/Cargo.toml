@@ -1,0 +1,20 @@
+[package]
+name = "accio-query"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Everything 互換の検索構文パーサと、索引に対する並列評価器"
+
+[dependencies]
+accio-index = { path = "../accio-index" }
+memchr.workspace = true
+rayon.workspace = true
+regex.workspace = true
+parking_lot.workspace = true
+anyhow.workspace = true
+log.workspace = true
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Time", "Win32_System_SystemInformation", "Win32_Storage_FileSystem"] }
+
+[dev-dependencies]
+parking_lot.workspace = true
+accio-ntfs = { path = "../accio-ntfs" }

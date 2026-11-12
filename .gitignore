@@ -1,0 +1,6 @@
+/target
+/.git-worktree/
+*.log
+/docs/.notes/**/*.tmp
+__pycache__/
+*.pyc

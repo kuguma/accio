@@ -1,0 +1,12 @@
+[package]
+name = "accio-ntfs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "NTFS 生アクセス層: ボリューム検出・MFT 一括読み取り・USN ジャーナル監視"
+
+[dependencies]
+windows-sys.workspace = true
+rayon.workspace = true
+anyhow.workspace = true
+log.workspace = true
