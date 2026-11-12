@@ -2327,7 +2327,7 @@ impl eframe::App for App {
                         if n > 0 {
                             ui.separator();
                             if let Some(res) = result.clone() {
-                                ui.allocate_ui(egui::vec2(inner.width(), n as f32 * ROW_H + 4.0), |ui| self.compact_list(ctx, ui, &res, &mut rows_out));
+                                ui.allocate_ui(egui::vec2(inner.width(), n as f32 * ROW_H + 12.0), |ui| self.compact_list(ctx, ui, &res, &mut rows_out));
                             }
                         }
                     });
