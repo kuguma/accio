@@ -1,6 +1,10 @@
 //! メインウィンドウ。
 //!
-//! 操作モデルは Everything と同じ:
+//! 2 つの形態がある。ピン留め（既定）は通常のウィンドウで、ファイルブラウザとして使える。
+//! ピン留めを外すと Spotlight 風の浮動パネルになり、他の場所を触る（フォーカスを失う）と隠れる。
+//! 検索の設定はすべて検索バー左端のハンバーガーに入っている。
+//!
+//! 操作モデル:
 //! - 検索窓が常にキーボードフォーカスを持つ。文字を打てば即検索。
 //! - ↑↓ / PgUp / PgDn / Ctrl+Home / Ctrl+End は結果の選択行を動かす（検索窓にフォーカスがあっても）。
 //! - Enter は「選択行があるとき」だけ開く。Ctrl+Enter はパスを開く。何も選択していなければ何も起きない。
@@ -451,6 +455,16 @@ pub struct App {
     /// 直前のフレームで描いた行の矩形（スクリプトの click:<row> に使う）
     row_rects: Vec<(usize, egui::Rect)>,
     last_copied: String,
+    /// ピン留め（通常のウィンドウ）。false なら Spotlight 風の浮動パネルで、フォーカスを失うと隠れる
+    pinned: bool,
+    /// OS のウィンドウに適用済みの形態（None なら未適用）
+    mode_applied: Option<bool>,
+    /// 直近に表示した時刻。表示直後はフォーカスが確定していないので、その間は隠さない
+    shown_at: Instant,
+    /// 浮動パネルの直近の高さ
+    float_h: f32,
+    /// 浮動パネルのカードの実測の高さ（直前のフレーム。0 なら未計測）
+    float_content_h: f32,
 }
 
 /// タブごとに保持する検索状態。
@@ -559,6 +573,131 @@ fn dollar_ref_re() -> &'static regex::Regex {
     RE.get_or_init(|| regex::Regex::new(r"\$(\d+)").unwrap())
 }
 
+/// 浮動パネル（ピン留めを外した状態）の幅と余白（pt）。余白は影のぶん
+const FLOAT_W: f32 = 760.0;
+const FLOAT_MARGIN: f32 = 24.0;
+const FLOAT_ROWS_MAX: usize = 10;
+/// 検索バーの高さと、コンパクト表示の行の高さ（pt）
+const BAR_H: f32 = 52.0;
+const ROW_H: f32 = 46.0;
+
+/// 検索バーのアイコン。すべて同じ枠（36pt、角丸 8）、同じ大きさ（18pt）、同じ線幅・色の線画で描く
+#[derive(Clone, Copy)]
+enum BarIcon {
+    Menu,
+    Pin,
+}
+const ICON_BTN: f32 = 36.0;
+const ICON_SIZE: f32 = 18.0;
+const ICON_STROKE: f32 = 1.8;
+
+/// 検索バーのアイコンボタン。`active` は背景を選択色にする（ピン留め中など）
+fn icon_button(ui: &mut egui::Ui, icon: BarIcon, active: bool, tooltip: &str) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(ICON_BTN, ICON_BTN), egui::Sense::click());
+    let v = ui.visuals().clone();
+    let p = ui.painter();
+    if active {
+        p.rect_filled(rect, 8.0, v.selection.bg_fill);
+    } else if resp.hovered() || resp.is_pointer_button_down_on() {
+        p.rect_filled(rect, 8.0, v.widgets.hovered.bg_fill);
+    }
+    let color = if active { v.selection.stroke.color } else { v.text_color() };
+    let stroke = egui::Stroke::new(ICON_STROKE, color);
+    let r = egui::Rect::from_center_size(rect.center(), egui::vec2(ICON_SIZE, ICON_SIZE));
+    let (w, h) = (r.width(), r.height());
+    let at = |fx: f32, fy: f32| egui::pos2(r.left() + w * fx, r.top() + h * fy);
+    match icon {
+        BarIcon::Menu => {
+            for fy in [0.2, 0.5, 0.8] {
+                p.line_segment([at(0.0, fy), at(1.0, fy)], stroke);
+            }
+        }
+        BarIcon::Pin => {
+            // 画鋲（斜め 45°、頭が右上、針は左下へ）: 直立の形を中心まわりに回してから描く
+            let c = r.center();
+            let rot = egui::emath::Rot2::from_angle(std::f32::consts::FRAC_PI_4);
+            let q = |fx: f32, fy: f32| c + rot * (at(fx, fy) - c);
+            p.line_segment([q(0.22, 0.06), q(0.78, 0.06)], stroke);
+            p.add(egui::Shape::closed_line(vec![q(0.32, 0.06), q(0.68, 0.06), q(0.82, 0.56), q(0.18, 0.56)], stroke));
+            p.line_segment([q(0.5, 0.56), q(0.5, 1.0)], stroke);
+        }
+    }
+    resp.on_hover_text(tooltip)
+}
+
+/// 検索バー/ハンバーガーから update() へ返す操作
+#[derive(Default)]
+struct BarActions {
+    export: bool,
+    open_file_list: bool,
+    close_file_list: bool,
+    toggle_pin: bool,
+    /// 表示の都合でピン留めが必要（サムネイル/プレビュー/設定）
+    need_pin: bool,
+}
+
+/// 結果行から update() へ返す操作
+#[derive(Default)]
+struct RowActions {
+    clicked: Option<(usize, (bool, bool))>,
+    double: Option<usize>,
+    rename_req: Option<Hit>,
+    delete_req: bool,
+    shell_menu_req: bool,
+    copy_files_req: bool,
+    du_into: Option<String>,
+    drag_start: Option<(usize, egui::Pos2)>,
+}
+
+/// 結果行の右クリックメニュー（コンパクト表示と表で共通）
+fn row_context_menu(ui: &mut egui::Ui, full: &str, name: &str, is_dir: bool, multi_len: usize, hit: Hit, out: &mut RowActions) {
+    let t = crate::i18n::tr;
+    if ui.button(t("開く (Enter)")).clicked() {
+        shell::open(full);
+        ui.close();
+    }
+    if ui.button(t("パスを開く (Ctrl+Enter)")).clicked() {
+        shell::open_path(full);
+        ui.close();
+    }
+    if ui.button(t("コピー (Ctrl+C)")).clicked() {
+        out.copy_files_req = true;
+        ui.close();
+    }
+    if ui.button(t("フルパスをコピー (Ctrl+Shift+C)")).clicked() {
+        ui.ctx().copy_text(full.to_string());
+        ui.close();
+    }
+    if ui.button(if multi_len > 1 { t("一括リネーム (F2)") } else { t("名前の変更 (F2)") }).clicked() {
+        out.rename_req = Some(hit);
+        ui.close();
+    }
+    if ui.button(t("Explorer のメニュー…")).clicked() {
+        out.shell_menu_req = true;
+        ui.close();
+    }
+    if ui.button(t("ごみ箱へ移動 (Del)")).clicked() {
+        out.delete_req = true;
+        ui.close();
+    }
+    if ui.button(t("名前をコピー")).clicked() {
+        ui.ctx().copy_text(name.to_string());
+        ui.close();
+    }
+    if is_dir && ui.button(t("このフォルダの容量内訳")).clicked() {
+        out.du_into = Some(full.to_string());
+        ui.close();
+    }
+    if !is_dir && ui.button(t("管理者として実行 (Ctrl+Shift+Enter)")).clicked() {
+        shell::open_as_admin(full);
+        ui.close();
+    }
+    if ui.button(t("プロパティ (Alt+Enter)")).clicked() {
+        shell::properties(full);
+        ui.close();
+    }
+}
+
 pub const FILTERS: [(&str, &str); 8] = [
     ("すべて", ""),
     ("音声", "audio:"),
@@ -640,6 +779,7 @@ impl App {
         let bookmarks: Vec<(String, String)> = (0..64)
             .filter_map(|i| settings.get(&format!("bookmark.{i}")).and_then(|v| v.split_once('|')).map(|(n, q)| (n.to_string(), q.to_string())))
             .collect();
+        let pinned = settings.bool("pinned", true);
         let tray = match crate::tray::Tray::new(&hotkey, repaint.clone()) {
             Ok(t) => Some(t),
             Err(e) => {
@@ -751,6 +891,11 @@ impl App {
             ui_script_wait: 30,
             row_rects: Vec::new(),
             last_copied: String::new(),
+            pinned,
+            mode_applied: None,
+            shown_at: Instant::now(),
+            float_h: 0.0,
+            float_content_h: 0.0,
             mode: Mode::Search,
             du_path: None,
             last_submitted: None,
@@ -1326,13 +1471,394 @@ impl App {
     /// 表示/非表示は Win32 で直接行う（隠れている間は egui のフレームが回らないため）。
     fn show_window(&mut self, ctx: &egui::Context) {
         self.hidden = false;
+        self.shown_at = Instant::now();
         crate::winshow::show();
+        if !self.pinned {
+            self.center_float(ctx);
+        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
         ctx.request_repaint();
     }
     fn hide_window(&mut self, _ctx: &egui::Context) {
         self.hidden = true;
         crate::winshow::hide();
+    }
+
+    fn popup_or_modal_open(&self, ctx: &egui::Context) -> bool {
+        egui::Popup::is_any_open(ctx) || self.renaming.is_some() || self.confirm_delete.is_some() || self.show_settings || self.bulk.is_some() || self.show_bookmarks
+    }
+
+    /// 浮動パネルの高さ（内容に合わせて伸縮する）
+    fn float_height(&self, ctx: &egui::Context, n_hits: usize) -> f32 {
+        // メニューが開いている間は、その分の余白（透明）を下に取る。ウィンドウの外には描けない
+        let needs_room = egui::Popup::is_any_open(ctx) || self.confirm_delete.is_some() || self.bulk.is_some() || self.show_bookmarks || self.renaming.is_some();
+        let popup_room = if needs_room { FLOAT_MARGIN * 2.0 + 620.0 } else { 0.0 };
+        if self.float_content_h > 0.0 {
+            return (FLOAT_MARGIN * 2.0 + self.float_content_h).max(popup_room);
+        }
+        let rows = n_hits.min(FLOAT_ROWS_MAX);
+        let list = if rows > 0 { 1.0 + rows as f32 * ROW_H + 8.0 } else { 0.0 };
+        let notice = if self.notice.as_ref().map(|(_, t)| t.elapsed() < Duration::from_secs(6)).unwrap_or(false) { 22.0 } else { 0.0 };
+        let du = if self.mode == Mode::DiskUsage { 24.0 } else { 0.0 };
+        (FLOAT_MARGIN * 2.0 + BAR_H + list + notice + du).max(popup_room)
+    }
+
+    /// 浮動パネルを画面の上寄り中央に置く
+    fn center_float(&self, ctx: &egui::Context) {
+        if let Some(m) = ctx.input(|i| i.viewport().monitor_size) {
+            let x = ((m.x - FLOAT_W) / 2.0).max(0.0);
+            let y = (m.y * 0.18).max(0.0);
+            ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(x, y)));
+        }
+    }
+
+    /// ウィンドウ形態（ピン留め = 通常ウィンドウ / 浮動パネル）を OS のウィンドウに適用する
+    fn apply_window_mode(&mut self, ctx: &egui::Context, n_hits: usize) {
+        use egui::ViewportCommand as C;
+        let changed = self.mode_applied != Some(self.pinned);
+        if self.pinned {
+            if changed {
+                self.mode_applied = Some(true);
+                ctx.send_viewport_cmd(C::Decorations(true));
+                ctx.send_viewport_cmd(C::WindowLevel(egui::viewport::WindowLevel::Normal));
+                ctx.send_viewport_cmd(C::Resizable(true));
+                ctx.send_viewport_cmd(C::MinInnerSize(egui::vec2(600.0, 300.0)));
+                let geom = |k: &str, d: f32| self.settings.get(k).and_then(|v| v.parse::<f32>().ok()).unwrap_or(d);
+                ctx.send_viewport_cmd(C::InnerSize(egui::vec2(geom("window_w", 1200.0).max(600.0), geom("window_h", 760.0).max(300.0))));
+                if let (Some(x), Some(y)) = (self.settings.get("window_x").and_then(|v| v.parse::<f32>().ok()), self.settings.get("window_y").and_then(|v| v.parse::<f32>().ok())) {
+                    ctx.send_viewport_cmd(C::OuterPosition(egui::pos2(x, y)));
+                }
+            }
+            return;
+        }
+        let h = self.float_height(ctx, n_hits);
+        if changed {
+            self.mode_applied = Some(false);
+            ctx.send_viewport_cmd(C::Decorations(false));
+            ctx.send_viewport_cmd(C::WindowLevel(egui::viewport::WindowLevel::AlwaysOnTop));
+            ctx.send_viewport_cmd(C::Resizable(false));
+            ctx.send_viewport_cmd(C::MinInnerSize(egui::vec2(FLOAT_W, FLOAT_MARGIN * 2.0 + BAR_H)));
+        }
+        if changed || (h - self.float_h).abs() > 0.5 {
+            self.float_h = h;
+            ctx.send_viewport_cmd(C::InnerSize(egui::vec2(FLOAT_W, h)));
+        }
+        if changed {
+            self.center_float(ctx);
+        }
+    }
+
+    /// 通常ウィンドウの位置と大きさを設定に覚える（ピン留め中だけ更新される last_rect から）
+    fn remember_geometry(&mut self) {
+        if let Some((x, y, w, h)) = self.last_rect {
+            if !self.last_maximized && w > 100.0 && h > 100.0 {
+                self.settings.set("window_x", x.round());
+                self.settings.set("window_y", y.round());
+                self.settings.set("window_w", w.round());
+                self.settings.set("window_h", h.round());
+            }
+            self.settings.set("window_maximized", self.last_maximized as u8);
+        }
+    }
+
+    fn set_pinned(&mut self, ctx: &egui::Context, pinned: bool) {
+        if self.pinned == pinned {
+            return;
+        }
+        if self.pinned {
+            self.remember_geometry();
+        }
+        self.pinned = pinned;
+        self.settings.set("pinned", pinned as u8);
+        self.save_settings();
+        self.shown_at = Instant::now();
+        ctx.request_repaint();
+    }
+
+    /// 検索バー: ハンバーガー、大きめの検索窓、件数、ピン留め
+    fn search_bar(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, result: &Option<Arc<Response>>, act: &mut BarActions) {
+        let popup_open_now = self.popup_or_modal_open(ctx);
+        ui.horizontal(|ui| {
+            ui.set_min_height(BAR_H);
+            ui.add_space(8.0);
+            let menu = icon_button(ui, BarIcon::Menu, false, crate::i18n::tr("検索の設定と表示"));
+            egui::Popup::menu(&menu).show(|ui| self.hamburger(ctx, ui, act));
+            ui.add_space(4.0);
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add_space(8.0);
+                let pin = icon_button(ui, BarIcon::Pin, self.pinned, crate::i18n::tr("ピン留めすると通常のウィンドウになり、他を操作しても閉じない (Ctrl+Shift+P)"));
+                if pin.clicked() {
+                    act.toggle_pin = true;
+                }
+                ui.add_space(4.0);
+                if let Some(r) = result.as_ref() {
+                    if !self.nothing_to_search() {
+                        let mut s = crate::i18n::trf("{} 件", &[&(fmt_count(r.total))]);
+                        if !r.sorted {
+                            s.push_str(crate::i18n::tr("  [件数が多いため未ソート]"));
+                        }
+                        ui.label(RichText::new(s).size(12.0).color(Color32::from_gray(140)));
+                    }
+                }
+                if self.searcher.busy.load(Ordering::Relaxed) != 0 {
+                    ui.spinner();
+                }
+                let hint = match self.mode {
+                    Mode::Search => crate::i18n::tr("検索"),
+                    Mode::DiskUsage => crate::i18n::tr("このフォルダ内を絞り込み"),
+                };
+                let edit = egui::TextEdit::singleline(&mut self.query)
+                    .id(self.search_id)
+                    .hint_text(RichText::new(hint).size(22.0).color(Color32::from_gray(150)))
+                    .font(egui::FontId::proportional(22.0))
+                    .vertical_align(egui::Align::Center)
+                    .desired_width(f32::INFINITY)
+                    .frame(false)
+                    .return_key(None);
+                // フォーカスは描く前に戻す（描いたあとに戻すと 1 フレームだけカーソル無しで描かれ、ちらつく）
+                if !popup_open_now && ctx.memory(|m| m.focused()) != Some(self.search_id) {
+                    ctx.memory_mut(|m| m.request_focus(self.search_id));
+                }
+                ui.add_sized(egui::vec2(ui.available_width(), BAR_H - 8.0), edit);
+            });
+        });
+    }
+
+    /// ハンバーガーの中身: 検索オプション、ドライブ、並べ替え、フィルタ、表示、各種ウィンドウ
+    fn hamburger(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, act: &mut BarActions) {
+        let t = crate::i18n::tr;
+        ui.set_min_width(260.0);
+        ui.toggle_value(&mut self.opts.match_case, t("大文字と小文字を区別 (Ctrl+I)"));
+        ui.toggle_value(&mut self.opts.match_path, t("パス全体に一致 (Ctrl+U)"));
+        ui.toggle_value(&mut self.opts.whole_word, t("単語単位で一致 (Ctrl+B)"));
+        ui.toggle_value(&mut self.opts.regex, t("正規表現 (Ctrl+R)"));
+        ui.toggle_value(&mut self.opts.match_diacritics, t("ダイアクリティカルマークを区別"));
+        ui.separator();
+        // ドライブ
+        let roots: Vec<String> = self.engine.status.lock().volumes.iter().map(|v| v.root.clone()).collect();
+        let drives_label = if self.drives_off.is_empty() {
+            t("ドライブ: すべて").to_string()
+        } else {
+            crate::i18n::trf("ドライブ: {}", &[&(roots.iter().filter(|r| !self.drives_off.contains(*r)).cloned().collect::<Vec<_>>().join(" "))])
+        };
+        let mut drives_changed = false;
+        ui.menu_button(drives_label, |ui| {
+            for r in &roots {
+                let mut on = !self.drives_off.contains(r);
+                if ui.checkbox(&mut on, r).changed() {
+                    if on {
+                        self.drives_off.remove(r);
+                    } else {
+                        self.drives_off.insert(r.clone());
+                    }
+                    drives_changed = true;
+                }
+            }
+            ui.separator();
+            if ui.button(t("すべて")).clicked() {
+                self.drives_off.clear();
+                drives_changed = true;
+            }
+        });
+        if drives_changed {
+            self.settings.set("drives_off", self.drives_off.iter().cloned().collect::<Vec<_>>().join(";"));
+            self.last_submitted = None;
+        }
+        // 並べ替え
+        let sort_text = crate::i18n::trf("並べ替え: {} {}", &[&sort_label(self.sort.key), &(if self.sort.ascending { t("昇順") } else { t("降順") })]);
+        ui.menu_button(sort_text, |ui| {
+            for k in [SortKey::Name, SortKey::Path, SortKey::Size, SortKey::DateModified, SortKey::DateCreated, SortKey::DateAccessed, SortKey::Extension, SortKey::RunCount, SortKey::DateRun] {
+                ui.selectable_value(&mut self.sort.key, k, sort_label(k));
+            }
+            ui.separator();
+            ui.selectable_value(&mut self.sort.ascending, true, t("昇順"));
+            ui.selectable_value(&mut self.sort.ascending, false, t("降順"));
+        });
+        // フィルタ
+        let filter_label = if self.filter < FILTERS.len() {
+            t(FILTERS[self.filter].0).to_string()
+        } else {
+            self.custom_filters.get(self.filter - FILTERS.len()).map(|(n, _, _)| n.clone()).unwrap_or_default()
+        };
+        ui.menu_button(crate::i18n::trf("フィルタ: {}", &[&filter_label]), |ui| {
+            for (i, (n, _)) in FILTERS.iter().enumerate() {
+                ui.selectable_value(&mut self.filter, i, t(n));
+            }
+            if !self.custom_filters.is_empty() {
+                ui.separator();
+            }
+            for (i, (n, _, _)) in self.custom_filters.iter().enumerate() {
+                ui.selectable_value(&mut self.filter, FILTERS.len() + i, n);
+            }
+        });
+        ui.separator();
+        // 表示
+        let du = self.mode == Mode::DiskUsage;
+        if ui.selectable_label(du, t("容量ビュー")).on_hover_text(t("容量を占有しているフォルダ/ファイルを一覧（フォルダを Enter/ダブルクリックで掘り下げ）")).clicked() {
+            if du {
+                self.mode = Mode::Search;
+                self.du_path = None;
+            } else {
+                self.mode = Mode::DiskUsage;
+                self.sort = Sort { key: SortKey::Size, ascending: false };
+                self.query.clear();
+            }
+            self.selected = None;
+            self.selected_row = None;
+            ui.close();
+        }
+        if ui.button(t("最大ファイル")).on_hover_text(t("全ボリュームで最大のファイル")).clicked() {
+            self.mode = Mode::Search;
+            self.du_path = None;
+            self.query = "file: size:>100mb".into();
+            self.sort = Sort { key: SortKey::Size, ascending: false };
+            ui.close();
+        }
+        let thumbs_on = self.thumb_size > 0;
+        if ui.selectable_label(thumbs_on, t("サムネイル")).on_hover_text(t("Ctrl+Shift+1/2/3 でサイズ、Ctrl+Shift+6 で詳細表示")).clicked() {
+            self.thumb_size = if thumbs_on { 0 } else { 160 };
+            self.settings.set("thumb_size", self.thumb_size);
+            act.need_pin |= self.thumb_size > 0;
+            ui.close();
+        }
+        if ui.selectable_label(self.show_preview, t("プレビュー (Alt+P)")).clicked() {
+            self.show_preview = !self.show_preview;
+            self.settings.set("preview", self.show_preview as u8);
+            act.need_pin |= self.show_preview;
+            ui.close();
+        }
+        ui.separator();
+        if ui.button(t("ブックマーク (Ctrl+D)")).clicked() {
+            self.show_bookmarks = true;
+            ui.close();
+        }
+        if ui.button(t("新しいタブ (Ctrl+T)")).clicked() {
+            self.new_tab();
+            ui.close();
+        }
+        if ui.button(t("ファイルリストを開く (Ctrl+O)")).clicked() {
+            act.open_file_list = true;
+            ui.close();
+        }
+        if let Some(name) = self.file_list.clone() {
+            if ui.button(crate::i18n::trf("ファイルリストを閉じる: {} (Ctrl+Shift+O)", &[&name])).clicked() {
+                act.close_file_list = true;
+                ui.close();
+            }
+        }
+        if ui.button(t("エクスポート (Ctrl+S)")).clicked() {
+            act.export = true;
+            ui.close();
+        }
+        ui.separator();
+        if ui.selectable_label(self.pinned, t("ピン留め (Ctrl+Shift+P)")).clicked() {
+            act.toggle_pin = true;
+            ui.close();
+        }
+        if ui.button(t("設定 (Ctrl+P)")).clicked() {
+            self.show_settings = true;
+            ui.close();
+        }
+        if ui.button(t("終了 (Ctrl+Q)")).clicked() {
+            self.allow_close = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    /// コンパクト表示（浮動パネル）: 名前と、その下にパス。右端にサイズと更新日時
+    fn compact_list(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, res: &Arc<Response>, out: &mut RowActions) {
+        let vols = self.engine.index.snapshot();
+        let guards: Vec<Option<parking_lot::RwLockReadGuard<'_, accio_index::VolumeIndex>>> = vols.iter().map(try_read_vol).collect();
+        let mut row_cache = std::mem::take(&mut self.row_cache);
+        if row_cache.len() > 50_000 {
+            row_cache.clear();
+        }
+        let selected_row = self.selected_row;
+        let multi = self.multi.clone();
+        let needles = self.needles.clone();
+        let text_color = ui.visuals().text_color();
+        let gray = Color32::from_gray(130);
+        let highlight = self.colors.highlight;
+        let name_font = egui::FontId::proportional(16.0);
+        let sub_font = egui::FontId::proportional(12.0);
+        let scroll_to = self.scroll_to.take();
+        let path_mode = self.opts.match_path || self.query.contains("path:");
+        let mut lock_missed = false;
+        let mut rects: Vec<(usize, egui::Rect)> = Vec::new();
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, ROW_H, res.hits.len(), |ui, range| {
+            for i in range {
+                let hit = res.hits[i];
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW_H), egui::Sense::click_and_drag());
+                if scroll_to == Some(i) {
+                    ui.scroll_to_rect(rect, None);
+                }
+                let data = match guards.get(hit.vol as usize).and_then(|g| g.as_ref()) {
+                    Some(g) => {
+                        if hit.id as usize >= g.len() {
+                            continue;
+                        }
+                        let d = Arc::new(RowData::read(g, hit.id));
+                        row_cache.insert(hit, d.clone());
+                        d
+                    }
+                    None => match row_cache.get(&hit) {
+                        Some(d) => d.clone(),
+                        None => {
+                            lock_missed = true;
+                            continue;
+                        }
+                    },
+                };
+                let p = ui.painter().clone();
+                let sel = selected_row == Some(i) || multi.contains(&hit);
+                let bg = rect.shrink2(egui::vec2(6.0, 1.0));
+                if sel {
+                    p.rect_filled(bg, 8.0, ui.visuals().selection.bg_fill);
+                } else if resp.hovered() {
+                    p.rect_filled(bg, 8.0, ui.visuals().widgets.hovered.bg_fill);
+                }
+                let icon_r = egui::Rect::from_center_size(egui::pos2(rect.left() + 30.0, rect.center().y), egui::vec2(20.0, 20.0));
+                paint_kind_icon_at(&p, icon_r, data.is_dir);
+                let size_text = if data.is_dir && data.size == 0 { String::new() } else { fmt_size(data.size) };
+                let right_text = if size_text.is_empty() { format_filetime(data.mtime) } else { format!("{size_text}    {}", format_filetime(data.mtime)) };
+                let right = p.layout_no_wrap(right_text, sub_font.clone(), gray);
+                let right_w = right.size().x;
+                p.galley(egui::pos2(rect.right() - 16.0 - right_w, rect.center().y - right.size().y / 2.0), right, gray);
+                let text_x = rect.left() + 52.0;
+                let max_w = (rect.right() - 16.0 - right_w - 12.0 - text_x).max(40.0);
+                let mut job = highlighted(&data.name, &needles, text_color, name_font.clone(), highlight);
+                job.wrap.max_width = max_w;
+                job.wrap.max_rows = 1;
+                job.wrap.break_anywhere = true;
+                let name_g = p.layout_job(job);
+                p.galley(egui::pos2(text_x, rect.top() + 5.0), name_g, text_color);
+                let mut pj = if path_mode { highlighted(&data.path, &needles, gray, sub_font.clone(), highlight) } else { LayoutJob::simple_singleline(data.path.clone(), sub_font.clone(), gray) };
+                pj.wrap.max_width = max_w;
+                pj.wrap.max_rows = 1;
+                pj.wrap.break_anywhere = true;
+                let path_g = p.layout_job(pj);
+                p.galley(egui::pos2(text_x, rect.top() + 27.0), path_g, gray);
+                if resp.clicked() || resp.secondary_clicked() {
+                    out.clicked = Some((i, ui_mods(&resp)));
+                }
+                if resp.double_clicked() {
+                    out.double = Some(i);
+                }
+                if resp.drag_started_by(egui::PointerButton::Primary) {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        out.drag_start = Some((i, pos));
+                    }
+                }
+                let full = if data.path.is_empty() { data.name.clone() } else { format!("{}\\{}", data.path, data.name) };
+                resp.context_menu(|ui| row_context_menu(ui, &full, &data.name, data.is_dir, multi.len(), hit, out));
+                rects.push((i, rect));
+            }
+        });
+        self.row_rects = rects;
+        self.row_cache = row_cache;
+        if lock_missed {
+            ctx.request_repaint_after(Duration::from_millis(30));
+        }
     }
 }
 
@@ -1359,7 +1885,15 @@ impl eframe::App for App {
         }
         if self.hwnd != 0 && !self.startup_hide_pending {
             // 外部（トレイ/ホットキー/IPC）が直接表示状態を変えているので実状態に合わせる
-            self.hidden = !crate::winshow::is_visible();
+            let vis = crate::winshow::is_visible();
+            if vis && self.hidden {
+                self.shown_at = Instant::now();
+                if !self.pinned {
+                    self.center_float(ctx);
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            }
+            self.hidden = !vis;
         }
         self.poll_file_list();
         if self.startup_hide_pending && self.hwnd != 0 {
@@ -1492,13 +2026,20 @@ impl eframe::App for App {
         let mut tab_cmd: Option<TabCmd> = None;
         let mut export = false;
         let mut extend = false;
-        let popup_open = ctx.is_popup_open() || self.renaming.is_some() || self.confirm_delete.is_some() || self.show_settings || self.bulk.is_some();
+        let mut toggle_pin = false;
+        let popup_open = self.popup_or_modal_open(ctx);
+        // 検索窓のキャレットが文末より手前（または範囲選択中）なら Delete は文字の削除に使う。
+        // 文末にあるときだけ、選択した結果をごみ箱へ送る
+        let caret_in_text = egui::TextEdit::load_state(ctx, self.search_id)
+            .and_then(|st| st.cursor.char_range())
+            .map(|r| r.primary.index != r.secondary.index || r.primary.index < self.query.chars().count())
+            .unwrap_or(false);
         if !popup_open {
             ctx.input_mut(|i| {
                 if i.consume_key(Modifiers::NONE, Key::Escape) || i.consume_key(Modifiers::ALT, Key::Home) {
                     clear = true;
                 }
-                if i.consume_key(Modifiers::NONE, Key::Delete) {
+                if !caret_in_text && i.consume_key(Modifiers::NONE, Key::Delete) {
                     delete_sel = true;
                 }
                 if i.consume_key(Modifiers::NONE, Key::F2) {
@@ -1511,6 +2052,9 @@ impl eframe::App for App {
                     close_file_list = true;
                 } else if i.consume_key(Modifiers::CTRL, Key::O) {
                     open_file_list = true;
+                }
+                if i.consume_key(Modifiers::CTRL | Modifiers::SHIFT, Key::P) {
+                    toggle_pin = true;
                 }
                 if i.consume_key(Modifiers::CTRL, Key::P) {
                     self.show_settings = true;
@@ -1721,198 +2265,142 @@ impl eframe::App for App {
             }
         }
 
-        // ---- 上部: 検索ボックスとオプション ----
-        egui::TopBottomPanel::top("top").show(ctx, |ui| {
-            ui.add_space(4.0);
-            if self.tabs.len() > 1 {
-                let mut go: Option<usize> = None;
-                let mut close: Option<usize> = None;
-                ui.horizontal_wrapped(|ui| {
-                    for (i, t) in self.tabs.iter().enumerate() {
-                        let label = if i == self.active_tab {
-                            if self.query.is_empty() { crate::i18n::tr("(空)").to_string() } else { self.query.chars().take(24).collect() }
-                        } else if t.query.is_empty() {
-                            crate::i18n::tr("(空)").to_string()
-                        } else {
-                            t.query.chars().take(24).collect()
-                        };
-                        let r = ui.selectable_label(i == self.active_tab, format!("{}: {label}", i + 1));
-                        if r.clicked() {
-                            go = Some(i);
-                        }
-                        if r.middle_clicked() || r.secondary_clicked() {
-                            close = Some(i);
-                        }
-                        r.on_hover_text(crate::i18n::tr("右クリック / 中クリックで閉じる"));
-                    }
-                    if ui.small_button("+").on_hover_text(crate::i18n::tr("新しいタブ (Ctrl+T)")).clicked() {
-                        go = Some(usize::MAX);
-                    }
-                });
-                if let Some(i) = go {
-                    if i == usize::MAX {
-                        self.new_tab();
-                    } else {
-                        self.switch_tab(i);
-                    }
-                }
-                if let Some(i) = close {
-                    self.switch_tab(i);
-                    self.close_tab();
-                }
+        // ---- ウィンドウ形態: ピン留め / 浮動 ----
+        if toggle_pin {
+            let p = !self.pinned;
+            self.set_pinned(ctx, p);
+        }
+        if self.show_settings && !self.pinned {
+            // 設定ウィンドウは大きいので通常ウィンドウで出す
+            self.set_pinned(ctx, true);
+        }
+        // 浮動パネルは Spotlight と同じく、他の場所を触る（フォーカスを失う）と隠れる
+        if !self.pinned && !self.hidden && self.hwnd != 0 && !self.startup_hide_pending {
+            let focused = ctx.input(|i| i.viewport().focused).unwrap_or(true);
+            if !focused && self.shown_at.elapsed() > Duration::from_millis(500) && !self.popup_or_modal_open(ctx) && self.drag_candidate.is_none() {
+                self.hide_window(ctx);
             }
-            ui.horizontal(|ui| {
-                if self.mode == Mode::DiskUsage {
-                    ui.label(RichText::new(crate::i18n::tr("容量")).strong());
-                    if ui.button(crate::i18n::tr("↑ 親へ")).clicked() {
-                        self.du_go_up();
-                    }
-                    ui.label(self.du_path.clone().unwrap_or_else(|| crate::i18n::tr("すべてのボリューム").into()));
-                    ui.separator();
-                }
-                // 検索窓の見た目は状態（フォーカス/ホバー/押下）で変えない。枠は自前で描き、egui の枠は使わない
-                let edit = egui::TextEdit::singleline(&mut self.query)
-                    .id(self.search_id)
-                    .hint_text(if self.mode == Mode::Search { crate::i18n::tr("検索（Everything 構文: a b|c !d ext:png size:>1mb dm:today path:…）") } else { crate::i18n::tr("このフォルダ内を絞り込み") })
-                    .desired_width(f32::INFINITY)
-                    .frame(false)
-                    .return_key(None);
-                // フォーカスは描く前に戻す（描いたあとに戻すと 1 フレームだけカーソル無しで描かれ、ちらつく）
-                let popup_open_now = ctx.is_popup_open() || self.renaming.is_some() || self.confirm_delete.is_some() || self.show_settings || self.bulk.is_some();
-                if !popup_open_now && ctx.memory(|m| m.focused()) != Some(self.search_id) {
-                    ctx.memory_mut(|m| m.request_focus(self.search_id));
-                }
-                let fill = ui.visuals().extreme_bg_color;
-                let stroke = egui::Stroke::new(1.0_f32, ui.visuals().widgets.inactive.bg_stroke.color);
-                let resp = egui::Frame::new().fill(fill).stroke(stroke).corner_radius(3.0).inner_margin(egui::Margin::symmetric(6, 4)).show(ui, |ui| ui.add(edit)).inner;
-                // 検索窓は常にフォーカスを持つ（ポップアップやメニューが開いている間を除く）
-                let _ = (&resp, popup_open);
-            });
-            ui.horizontal_wrapped(|ui| {
-                ui.toggle_value(&mut self.opts.match_case, "Aa").on_hover_text(crate::i18n::tr("大文字と小文字を区別 (Ctrl+I)"));
-                ui.toggle_value(&mut self.opts.match_path, crate::i18n::tr("パス")).on_hover_text(crate::i18n::tr("パス全体に一致 (Ctrl+U)"));
-                ui.toggle_value(&mut self.opts.whole_word, crate::i18n::tr("単語")).on_hover_text(crate::i18n::tr("単語単位で一致 (Ctrl+B)"));
-                ui.toggle_value(&mut self.opts.regex, ".*").on_hover_text(crate::i18n::tr("正規表現 (Ctrl+R)"));
-                ui.toggle_value(&mut self.opts.match_diacritics, "é").on_hover_text(crate::i18n::tr("ダイアクリティカルマークを区別（off なら e は é にも一致）"));
-                ui.separator();
-                // ドライブの選択
-                let roots: Vec<String> = self.engine.status.lock().volumes.iter().map(|v| v.root.clone()).collect();
-                let drives_label = if self.drives_off.is_empty() {
-                    crate::i18n::tr("ドライブ: すべて").to_string()
-                } else {
-                    crate::i18n::trf("ドライブ: {}", &[&(roots.iter().filter(|r| !self.drives_off.contains(*r)).cloned().collect::<Vec<_>>().join(" "))])
-                };
-                let mut drives_changed = false;
-                ui.menu_button(drives_label, |ui| {
-                    for r in &roots {
-                        let mut on = !self.drives_off.contains(r);
-                        if ui.checkbox(&mut on, r).changed() {
-                            if on {
-                                self.drives_off.remove(r);
+        }
+        self.apply_window_mode(ctx, n_hits);
+
+        // ---- 検索バー（ピン留め: 上部パネル / 浮動: 角丸のカード）----
+        let mut bar = BarActions::default();
+        let mut rows_out = RowActions::default();
+        let notice_text = self.notice.as_ref().filter(|(_, t)| t.elapsed() < Duration::from_secs(6)).map(|(m, _)| m.clone());
+        if self.pinned {
+            egui::TopBottomPanel::top("top").frame(egui::Frame::new().fill(ctx.style().visuals.panel_fill).inner_margin(egui::Margin::symmetric(6, 4))).show(ctx, |ui| {
+                if self.tabs.len() > 1 {
+                    let mut go: Option<usize> = None;
+                    let mut close: Option<usize> = None;
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, t) in self.tabs.iter().enumerate() {
+                            let label = if i == self.active_tab {
+                                if self.query.is_empty() { crate::i18n::tr("(空)").to_string() } else { self.query.chars().take(24).collect() }
+                            } else if t.query.is_empty() {
+                                crate::i18n::tr("(空)").to_string()
                             } else {
-                                self.drives_off.insert(r.clone());
+                                t.query.chars().take(24).collect()
+                            };
+                            let r = ui.selectable_label(i == self.active_tab, format!("{}: {label}", i + 1));
+                            if r.clicked() {
+                                go = Some(i);
                             }
-                            drives_changed = true;
+                            if r.middle_clicked() || r.secondary_clicked() {
+                                close = Some(i);
+                            }
+                            r.on_hover_text(crate::i18n::tr("右クリック / 中クリックで閉じる"));
                         }
-                    }
-                    ui.separator();
-                    if ui.button(crate::i18n::tr("すべて")).clicked() {
-                        self.drives_off.clear();
-                        drives_changed = true;
-                    }
-                });
-                if drives_changed {
-                    self.settings.set("drives_off", self.drives_off.iter().cloned().collect::<Vec<_>>().join(";"));
-                    self.last_submitted = None;
-                }
-                ui.separator();
-                if let Some(name) = self.file_list.clone() {
-                    ui.separator();
-                    ui.label(RichText::new(crate::i18n::trf("ファイルリスト: {}", &[&name])).strong());
-                    if ui.button(crate::i18n::tr("閉じる (Ctrl+Shift+O)")).clicked() {
-                        close_file_list = true;
-                    }
-                }
-                ui.separator();
-                ui.label(crate::i18n::tr("並べ替え:"));
-                egui::ComboBox::from_id_salt("sort")
-                    .selected_text(sort_label(self.sort.key))
-                    .show_ui(ui, |ui| {
-                        for k in [SortKey::Name, SortKey::Path, SortKey::Size, SortKey::DateModified, SortKey::DateCreated, SortKey::DateAccessed, SortKey::Extension, SortKey::RunCount, SortKey::DateRun] {
-                            ui.selectable_value(&mut self.sort.key, k, sort_label(k));
+                        if ui.small_button("+").on_hover_text(crate::i18n::tr("新しいタブ (Ctrl+T)")).clicked() {
+                            go = Some(usize::MAX);
                         }
                     });
-                if ui.button(if self.sort.ascending { crate::i18n::tr("昇順") } else { crate::i18n::tr("降順") }).clicked() {
-                    self.sort.ascending = !self.sort.ascending;
-                }
-                ui.separator();
-                let du = self.mode == Mode::DiskUsage;
-                if ui.selectable_label(du, crate::i18n::tr("容量ビュー")).on_hover_text(crate::i18n::tr("容量を占有しているフォルダ/ファイルを一覧（フォルダを Enter/ダブルクリックで掘り下げ）")).clicked() {
-                    if du {
-                        self.mode = Mode::Search;
-                        self.du_path = None;
-                    } else {
-                        self.mode = Mode::DiskUsage;
-                        self.sort = Sort { key: SortKey::Size, ascending: false };
-                        self.query.clear();
+                    if let Some(i) = go {
+                        if i == usize::MAX {
+                            self.new_tab();
+                        } else {
+                            self.switch_tab(i);
+                        }
                     }
-                    self.selected = None;
-                    self.selected_row = None;
-                }
-                if ui.button(crate::i18n::tr("最大ファイル")).on_hover_text(crate::i18n::tr("全ボリュームで最大のファイル")).clicked() {
-                    self.mode = Mode::Search;
-                    self.du_path = None;
-                    self.query = "file: size:>100mb".into();
-                    self.sort = Sort { key: SortKey::Size, ascending: false };
-                }
-                ui.separator();
-                ui.label(crate::i18n::tr("フィルタ:"));
-                let filter_label = if self.filter < FILTERS.len() {
-                    crate::i18n::tr(FILTERS[self.filter].0).to_string()
-                } else {
-                    self.custom_filters.get(self.filter - FILTERS.len()).map(|(n, _, _)| n.clone()).unwrap_or_default()
-                };
-                egui::ComboBox::from_id_salt("filter").selected_text(filter_label).show_ui(ui, |ui| {
-                    for (i, (n, _)) in FILTERS.iter().enumerate() {
-                        ui.selectable_value(&mut self.filter, i, crate::i18n::tr(n));
+                    if let Some(i) = close {
+                        self.switch_tab(i);
+                        self.close_tab();
                     }
-                    if !self.custom_filters.is_empty() {
-                        ui.separator();
-                    }
-                    for (i, (n, _, _)) in self.custom_filters.iter().enumerate() {
-                        ui.selectable_value(&mut self.filter, FILTERS.len() + i, n);
-                    }
-                });
-                if ui.button(crate::i18n::tr("ブックマーク (Ctrl+D)")).clicked() {
-                    self.show_bookmarks = !self.show_bookmarks;
                 }
-                if ui.button(crate::i18n::tr("新しいタブ (Ctrl+T)")).clicked() {
-                    self.new_tab();
+                self.search_bar(ctx, ui, &result, &mut bar);
+                if self.mode == Mode::DiskUsage {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.label(RichText::new(crate::i18n::tr("容量")).strong());
+                        if ui.button(crate::i18n::tr("↑ 親へ")).clicked() {
+                            self.du_go_up();
+                        }
+                        ui.label(self.du_path.clone().unwrap_or_else(|| crate::i18n::tr("すべてのボリューム").into()));
+                    });
                 }
-                let thumbs_on = self.thumb_size > 0;
-                if ui.selectable_label(thumbs_on, crate::i18n::tr("サムネイル")).on_hover_text(crate::i18n::tr("Ctrl+Shift+1/2/3 でサイズ、Ctrl+Shift+6 で詳細表示")).clicked() {
-                    self.thumb_size = if thumbs_on { 0 } else { 160 };
-                    self.settings.set("thumb_size", self.thumb_size);
-                }
-                if ui.selectable_label(self.show_preview, crate::i18n::tr("プレビュー (Alt+P)")).clicked() {
-                    self.show_preview = !self.show_preview;
-                    self.settings.set("preview", self.show_preview as u8);
-                }
-                ui.separator();
-                if ui.button(crate::i18n::tr("設定 (Ctrl+P)")).clicked() {
-                    self.show_settings = true;
-                }
-                if ui.button(crate::i18n::tr("エクスポート (Ctrl+S)")).clicked() {
-                    export = true;
-                }
-                if let Some((msg, t)) = &self.notice {
-                    if t.elapsed() < Duration::from_secs(6) {
+                if let Some(msg) = &notice_text {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
                         ui.colored_label(Color32::from_rgb(200, 80, 0), msg);
-                    }
+                    });
                 }
             });
-            ui.add_space(2.0);
-        });
+        } else {
+            let bg = ctx.style().visuals.window_fill;
+            let stroke = ctx.style().visuals.window_stroke;
+            egui::CentralPanel::default().frame(egui::Frame::NONE).show(ctx, |ui| {
+                let inner = ui.max_rect().shrink(FLOAT_MARGIN);
+                let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+                let card = egui::Frame::new()
+                    .fill(bg)
+                    .stroke(stroke)
+                    .corner_radius(14.0)
+                    .shadow(egui::epaint::Shadow { offset: [0, 6], blur: 22, spread: 0, color: Color32::from_black_alpha(80) })
+                    .show(&mut child, |ui| {
+                        ui.set_min_width(inner.width());
+                        ui.set_max_width(inner.width());
+                        self.search_bar(ctx, ui, &result, &mut bar);
+                        if self.mode == Mode::DiskUsage {
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                ui.label(RichText::new(crate::i18n::tr("容量")).strong());
+                                if ui.button(crate::i18n::tr("↑ 親へ")).clicked() {
+                                    self.du_go_up();
+                                }
+                                ui.label(self.du_path.clone().unwrap_or_else(|| crate::i18n::tr("すべてのボリューム").into()));
+                            });
+                        }
+                        if let Some(msg) = &notice_text {
+                            ui.horizontal(|ui| {
+                                ui.add_space(12.0);
+                                ui.colored_label(Color32::from_rgb(200, 80, 0), msg);
+                            });
+                        }
+                        let n = n_hits.min(FLOAT_ROWS_MAX);
+                        if n > 0 {
+                            ui.separator();
+                            if let Some(res) = result.clone() {
+                                ui.allocate_ui(egui::vec2(inner.width(), n as f32 * ROW_H + 12.0), |ui| self.compact_list(ctx, ui, &res, &mut rows_out));
+                            }
+                        }
+                    });
+                // カードの実測の高さに合わせて次のフレームでウィンドウを伸縮する
+                let h = card.response.rect.height().ceil();
+                if (h - self.float_content_h).abs() > 0.5 {
+                    self.float_content_h = h;
+                    ctx.request_repaint();
+                }
+            });
+        }
+        if bar.toggle_pin {
+            let p = !self.pinned;
+            self.set_pinned(ctx, p);
+        }
+        if bar.need_pin && !self.pinned {
+            self.set_pinned(ctx, true);
+        }
+        let open_file_list = open_file_list || bar.open_file_list;
+        let close_file_list = close_file_list || bar.close_file_list;
+        let export = export || bar.export;
 
         if open_file_list {
             self.open_file_list_dialog();
@@ -1932,7 +2420,7 @@ impl eframe::App for App {
             let mut pick: Option<String> = None;
             let mut remove: Option<usize> = None;
             let mut add = false;
-            egui::Window::new(crate::i18n::tr("ブックマーク")).open(&mut open).resizable(true).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("ブックマーク")).open(&mut open).resizable(true).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 if ui.button(crate::i18n::trf("現在の検索を追加: {}", &[&(if self.query.is_empty() { crate::i18n::tr("(空)") } else { &self.query })])).clicked() && !self.query.is_empty() {
                     add = true;
                 }
@@ -2204,7 +2692,7 @@ impl eframe::App for App {
         if let Some(mut b) = self.bulk.take() {
             let mut keep = true;
             let mut apply = false;
-            egui::Window::new(crate::i18n::tr("一括リネーム")).collapsible(false).resizable(true).default_width(700.0).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("一括リネーム")).collapsible(false).resizable(true).default_width(700.0).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 ui.label(crate::i18n::trf("{} 件", &[&(b.paths.len())]));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::tr("検索:"));
@@ -2273,7 +2761,7 @@ impl eframe::App for App {
         // ---- ごみ箱確認 ----
         if let Some(paths) = self.confirm_delete.clone() {
             let mut decided: Option<bool> = None;
-            egui::Window::new(crate::i18n::tr("ごみ箱へ移動")).collapsible(false).resizable(false).show(ctx, |ui| {
+            egui::Window::new(crate::i18n::tr("ごみ箱へ移動")).collapsible(false).resizable(false).anchor(egui::Align2::CENTER_TOP, [0.0, 80.0]).show(ctx, |ui| {
                 ui.label(crate::i18n::trf("{} 件をごみ箱へ移動します。", &[&(paths.len())]));
                 for p in paths.iter().take(8) {
                     ui.monospace(p);
@@ -2311,7 +2799,8 @@ impl eframe::App for App {
             }
         }
 
-        // ---- 下部: ステータス ----
+        // ---- 下部: ステータス（ピン留め時）----
+        if self.pinned {
         egui::TopBottomPanel::bottom("status").show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
                 match &result {
@@ -2371,9 +2860,10 @@ impl eframe::App for App {
                 }
             });
         });
+        }
 
-        // ---- プレビュー（右） ----
-        if self.show_preview {
+        // ---- プレビュー（右、ピン留め時） ----
+        if self.pinned && self.show_preview {
             if self.preview_for != self.selected {
                 self.preview_for = self.selected;
                 match self.selected.and_then(|h| self.hit_path(h)) {
@@ -2429,17 +2919,9 @@ impl eframe::App for App {
             });
         }
 
-        // ---- 中央: 結果テーブル ----
-        let mut clicked: Option<(usize, (bool, bool))> = None;
-        let mut double: Option<usize> = None;
+        // ---- 中央: 結果テーブル（ピン留め時） ----
         let mut rename_outcome: Option<(String, bool, bool)> = None;
-        let mut rename_req: Option<Hit> = None;
-        let mut delete_req = false;
-        let mut shell_menu_req = false;
-        let mut copy_files_req = false;
-        let mut drag_start: Option<(usize, egui::Pos2)> = None;
         let mut header_sort: Option<SortKey> = None;
-        let mut du_into: Option<String> = None;
         let mut toggle_col: Option<Col> = None;
         // サムネイルの完成分を取り込む
         for (path, r) in self.thumbs.take() {
@@ -2452,7 +2934,7 @@ impl eframe::App for App {
         }
         let mut thumb_clicked: Option<(usize, (bool, bool))> = None;
         let mut thumb_double: Option<usize> = None;
-        if self.thumb_size > 0 {
+        if self.pinned && self.thumb_size > 0 {
             egui::CentralPanel::default().show(ctx, |ui| {
                 let Some(res) = result.clone() else {
                     ui.centered_and_justified(|ui| ui.label(crate::i18n::tr("索引を準備しています…")));
@@ -2539,7 +3021,7 @@ impl eframe::App for App {
                 }
             });
         }
-        if self.thumb_size == 0 {
+        if self.pinned && self.thumb_size == 0 {
         egui::CentralPanel::default().show(ctx, |ui| {
             let Some(res) = result.clone() else {
                 ui.centered_and_justified(|ui| ui.label(crate::i18n::tr("索引を準備しています…")));
@@ -2712,64 +3194,18 @@ impl eframe::App for App {
                         let r = row.response();
                         row_rects_out.push((i, r.rect));
                         if r.clicked() || r.secondary_clicked() {
-                            let mods = ui_mods(&r);
-                            clicked = Some((i, mods));
+                            rows_out.clicked = Some((i, ui_mods(&r)));
                         }
                         if r.drag_started_by(egui::PointerButton::Primary) {
                             if let Some(pos) = r.interact_pointer_pos() {
-                                drag_start = Some((i, pos));
+                                rows_out.drag_start = Some((i, pos));
                             }
                         }
                         if r.double_clicked() {
-                            double = Some(i);
+                            rows_out.double = Some(i);
                         }
-                        r.context_menu(|ui| {
-                            let full = if data.path.is_empty() { data.name.clone() } else { format!("{}\\{}", data.path, data.name) };
-                            if ui.button(crate::i18n::tr("開く (Enter)")).clicked() {
-                                shell::open(&full);
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("パスを開く (Ctrl+Enter)")).clicked() {
-                                shell::open_path(&full);
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("コピー (Ctrl+C)")).clicked() {
-                                copy_files_req = true;
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("フルパスをコピー (Ctrl+Shift+C)")).clicked() {
-                                ui.ctx().copy_text(full.clone());
-                                ui.close();
-                            }
-                            if ui.button(if multi.len() > 1 { crate::i18n::tr("一括リネーム (F2)") } else { crate::i18n::tr("名前の変更 (F2)") }).clicked() {
-                                rename_req = Some(hit);
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("Explorer のメニュー…")).clicked() {
-                                shell_menu_req = true;
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("ごみ箱へ移動 (Del)")).clicked() {
-                                delete_req = true;
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("名前をコピー")).clicked() {
-                                ui.ctx().copy_text(name.clone());
-                                ui.close();
-                            }
-                            if is_dir && ui.button(crate::i18n::tr("このフォルダの容量内訳")).clicked() {
-                                du_into = Some(full.clone());
-                                ui.close();
-                            }
-                            if !is_dir && ui.button(crate::i18n::tr("管理者として実行 (Ctrl+Shift+Enter)")).clicked() {
-                                shell::open_as_admin(&full);
-                                ui.close();
-                            }
-                            if ui.button(crate::i18n::tr("プロパティ (Alt+Enter)")).clicked() {
-                                shell::properties(&full);
-                                ui.close();
-                            }
-                        });
+                        let full = if data.path.is_empty() { data.name.clone() } else { format!("{}\\{}", data.path, data.name) };
+                        r.context_menu(|ui| row_context_menu(ui, &full, &name, is_dir, multi.len(), hit, &mut rows_out));
                     });
                 });
             rename_outcome = rename_edit;
@@ -2782,11 +3218,12 @@ impl eframe::App for App {
         });
         }
         if let Some((i, m)) = thumb_clicked {
-            clicked = Some((i, m));
+            rows_out.clicked = Some((i, m));
         }
         if let Some(i) = thumb_double {
-            double = Some(i);
+            rows_out.double = Some(i);
         }
+        let RowActions { clicked, double, rename_req, delete_req, shell_menu_req, copy_files_req, du_into, drag_start } = rows_out;
         if let Some((text, commit, cancel)) = rename_outcome {
             if cancel {
                 self.renaming = None;
@@ -2922,10 +3359,12 @@ impl eframe::App for App {
         }
 
         self.maybe_submit();
-        if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
-            self.last_rect = Some((rect.min.x, rect.min.y, rect.width(), rect.height()));
+        if self.pinned && self.mode_applied == Some(true) {
+            if let Some(rect) = ctx.input(|i| i.viewport().outer_rect) {
+                self.last_rect = Some((rect.min.x, rect.min.y, rect.width(), rect.height()));
+            }
+            self.last_maximized = ctx.input(|i| i.viewport().maximized).unwrap_or(false);
         }
-        self.last_maximized = ctx.input(|i| i.viewport().maximized).unwrap_or(false);
         let busy = self.engine.status.lock().volumes.iter().any(|v| matches!(v.state, VolState::Scanning { .. } | VolState::Loading));
         if busy {
             ctx.request_repaint_after(Duration::from_millis(250));
@@ -2934,6 +3373,14 @@ impl eframe::App for App {
 
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         self.run_ui_script(ctx, raw_input);
+    }
+
+    fn clear_color(&self, visuals: &egui::Visuals) -> [f32; 4] {
+        if self.pinned {
+            visuals.panel_fill.to_normalized_gamma_f32()
+        } else {
+            [0.0, 0.0, 0.0, 0.0]
+        }
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
@@ -2951,15 +3398,7 @@ impl eframe::App for App {
             }
         }
         self.settings.set("session.active", self.active_tab);
-        if let Some((x, y, w, h)) = self.last_rect {
-            if !self.last_maximized && w > 100.0 && h > 100.0 {
-                self.settings.set("window_x", x.round());
-                self.settings.set("window_y", y.round());
-                self.settings.set("window_w", w.round());
-                self.settings.set("window_h", h.round());
-            }
-            self.settings.set("window_maximized", self.last_maximized as u8);
-        }
+        self.remember_geometry();
         self.run_history.save();
         self.save_settings();
         self.engine.stop_and_save();

@@ -10,6 +10,12 @@ accio accepts everything you already do in Everything 1.4. This page lists what 
 - To keep the UI unelevated, enable the privilege-separated indexer in Settings: `accio -indexer` runs headless with the highest privileges and the UI follows its index files (`use_indexer=1`).
 - With an empty search box (and the filter set to "all") nothing is listed.
 
+## The window
+
+- The window is a search bar and results, nothing else. Every search option (match case, path, regex, drives, sort, filter, view, bookmarks, settings…) lives in the hamburger menu (≡) at the left of the search bar.
+- **Pinned** (default): a normal window. The column table, preview pane, thumbnails and tabs are available, and it can stay open as a file browser.
+- **Unpinned** (Ctrl+Shift+P, or "Pin" at the right of the search bar): a Spotlight-style floating panel. Only the search box appears near the top of the screen and results grow below it as you type. Esc, or touching anything else (losing focus), hides it; the hotkey or the tray icon brings it back.
+
 ## Keyboard
 
 | Key | Action |
@@ -32,10 +38,11 @@ accio accepts everything you already do in Everything 1.4. This page lists what 
 | Alt+P | Preview pane |
 | Ctrl+Shift+1 / 2 / 3 / 6 | Thumbnails (small / medium / large) / details |
 | Ctrl+P | Settings |
+| Ctrl+Shift+P | Toggle pinning (normal window / floating panel) |
 | F5 | Search again (reload the index when following an indexer) |
 | Ctrl+Q | Quit |
 | ctrl+alt+a (global) / double-click the tray icon | Show or hide the window (configurable) |
-| Toolbar "Drives" | Choose which drives to search (saved as `drives_off=`) |
+| Hamburger "Drives" | Choose which drives to search (saved as `drives_off=`) |
 
 ## Query syntax
 
@@ -95,6 +102,7 @@ Everything that can be changed in Settings (Ctrl+P) is stored under the same key
 | `lang=ja|en` | UI language (empty = follow the Windows display language; takes effect after restart) |
 | `run_in_background=1` `hotkey=ctrl+alt+a` | Stay in the tray on close/Esc, global hotkey |
 | `restore_session=1` | Restore tabs and queries from the last session |
+| `pinned=1` | Pinned (normal window). 0 starts as the Spotlight-style floating panel |
 | `use_indexer=1` | Follow a separate indexer process (the UI stays unelevated) |
 | `http_server=1` `http_port=80` `http_bind=` `http_user=` `http_password=` | HTTP server (Everything-compatible `?search=&json=1` etc., Basic auth) |
 | `etp_server=1` `etp_port=21` `etp_bind=` `etp_user=` `etp_password=` `etp_allow_download=1` | ETP/FTP server (the `EVERYTHING` command set) |
