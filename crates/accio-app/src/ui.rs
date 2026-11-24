@@ -950,6 +950,7 @@ impl App {
     fn maybe_submit(&mut self) {
         if self.nothing_to_search() {
             if self.last_submitted.is_some() || self.searcher.result.load().is_none() {
+                self.searcher.cancel();
                 self.searcher.result.store(Some(Arc::new(Response::default())));
                 self.last_submitted = None;
             }
@@ -1955,6 +1956,7 @@ impl eframe::App for App {
             }
         }
         for c in tray_cmds {
+            log::debug!("UI received tray command {c:?}");
             use crate::tray::TrayCommand::*;
             match c {
                 ShowWindow => self.show_window(ctx),
@@ -1981,6 +1983,15 @@ impl eframe::App for App {
         if ctx.input(|i| i.viewport().close_requested()) && self.run_in_background && !self.allow_close && self.tray.is_some() {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.hide_window(ctx);
+        }
+
+        if self.allow_close {
+            log::info!("shutdown requested");
+        }
+        if self.allow_close || self.hidden {
+            self.searcher.cancel();
+            self.last_submitted = None;
+            return;
         }
 
         let mut result = self.searcher.result.load_full();
@@ -3384,6 +3395,7 @@ impl eframe::App for App {
     }
 
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.searcher.cancel();
         // セッション保存（各タブの検索語）
         self.tabs[self.active_tab] = self.snapshot_tab();
         for i in 0..32 {

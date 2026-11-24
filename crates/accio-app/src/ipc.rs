@@ -526,8 +526,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                             _ => {}
                         }
                     }
+                    let close = cmds.iter().any(|c| matches!(c, ExternalCommand::Exit));
                     ctx.external.lock().extend(cmds);
                     (ctx.repaint)();
+                    if close {
+                        crate::winshow::request_close();
+                    } else {
+                        crate::winshow::wake();
+                    }
                     1
                 }
                 COPYDATA_QUERYA | COPYDATA_QUERYW if bytes.len() >= 20 => {

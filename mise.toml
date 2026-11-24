@@ -17,3 +17,8 @@ run = ["cargo build --release -p accio", "powershell -NoProfile -Command \"Start
 [tasks.clippy]
 description = "clippy（警告をエラー扱い）"
 run = "cargo clippy --workspace --all-targets -- -D warnings"
+
+[tasks.probe-resident]
+description = "常駐時の負荷を測定し、トレイからの終了と IPC 検索を検証"
+depends = ["build"]
+run = "python scripts/resident_probe.py --output target/resident-probe.json --bench-search"

@@ -10,7 +10,7 @@ fn build() -> Index {
     let r = FileReader::open_path(&img).unwrap();
     let meta = VolumeMeta { guid_path: "test".into(), display_root: "T:".into(), ..Default::default() };
     let b = VolumeBuilder::new(meta, 1024);
-    scan_mft(&r, &ScanOptions { chunk_bytes: 8192, threads: 2 }, &AtomicBool::new(false), &|_, _| {}, &|v| b.push_batch(v)).unwrap();
+    scan_mft(&r, &ScanOptions { chunk_bytes: 8192, threads: 2, ..Default::default() }, &AtomicBool::new(false), &|_, _| {}, &|v| b.push_batch(v)).unwrap();
     let vol = b.finish();
     Index::new(vec![vol])
 }

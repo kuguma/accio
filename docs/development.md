@@ -28,6 +28,10 @@
 - `python -I scripts/ipc3_journal.py <instance>`: 索引ジャーナル（READ_JOURNAL ストリーム）を読む。`ACCIO_JOURNAL_PROBE=1` で合成の変更 3 件が入る。
 - `python -I scripts/ipc3_client.py <instance> "<query>"`: Everything 1.5 SDK3 互換の IPC v3（名前付きパイプ）を SDK3 と同じ符号化で叩く。
 
+## 常駐時の負荷と終了
+
+`probe-resident` タスクで、保存済み索引を使って常駐時の負荷と非表示中の終了を検証する。既定では昇格せず、ユーザーの設定と索引には触れない。実際の USN 更新を検証する場合は、管理者権限の端末から `--live-usn` を指定する。音飛びは、問題の起きたデバイスで別途確認する。
+
 ## 権限分離（インデクサ）の試し方
 
 `accio -indexer` はウィンドウなしのインデクサ。UI 側は accio.ini に `use_indexer=1` を書くと昇格せずに起動し、索引ファイルの更新を追従する。

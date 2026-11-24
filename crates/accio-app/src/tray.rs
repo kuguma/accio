@@ -61,8 +61,12 @@ impl Tray {
             if matches!(cmd, TrayCommand::ShowWindow | TrayCommand::NewSearch) {
                 crate::winshow::show();
             }
+            log::debug!("tray command {cmd:?}");
             let _ = tx1.send(cmd);
             rp1();
+            if cmd == TrayCommand::Exit {
+                crate::winshow::request_close();
+            }
         }));
         let tx2 = tx.clone();
         let rp2 = repaint.clone();
@@ -72,6 +76,7 @@ impl Tray {
                 crate::winshow::toggle();
                 let _ = tx2.send(TrayCommand::ToggleWindow);
                 rp2();
+                crate::winshow::wake();
             }
         }));
 
@@ -90,6 +95,7 @@ impl Tray {
                                     crate::winshow::toggle();
                                     let _ = tx3.send(TrayCommand::ToggleWindow);
                                     rp3();
+                                    crate::winshow::wake();
                                 }
                             }));
                             hotkeys = Some(m);
