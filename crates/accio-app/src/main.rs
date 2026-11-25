@@ -2,6 +2,7 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod background;
 mod dragdrop;
 mod elevation;
 mod engine;
@@ -341,6 +342,12 @@ fn main() -> eframe::Result<()> {
         "accio",
         options,
         Box::new(move |cc| {
+            use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            if let Ok(handle) = cc.window_handle() {
+                if let RawWindowHandle::Win32(w) = handle.as_raw() {
+                    winshow::set_main_hwnd(w.hwnd.get());
+                }
+            }
             ui::install_fonts(&cc.egui_ctx, settings.get("font"), settings.get("font_size").and_then(|v| v.parse().ok()).unwrap_or(13.0));
             let ctx = cc.egui_ctx.clone();
             let repaint: Arc<dyn Fn() + Send + Sync> = Arc::new(move || ctx.request_repaint());
@@ -367,16 +374,16 @@ fn main() -> eframe::Result<()> {
                 j.push(accio_index::update::Change { kind: accio_index::update::CH_FILE_MOVE, old_path: "C:\\probe".into(), old_name: "a.txt".into(), new_path: "C:\\probe\\sub".into(), new_name: "b.txt".into(), size: 123, mtime: 1, ctime: 2, atime: 0, attrs: 32 });
                 j.push(accio_index::update::Change { kind: accio_index::update::CH_FOLDER_DELETE, old_path: "C:\\probe".into(), old_name: "sub".into(), new_path: String::new(), new_name: String::new(), size: u64::MAX, mtime: 0, ctime: 0, atime: 0, attrs: 16 });
             }
-            let eng2 = engine.clone();
             let external = Arc::new(parking_lot::Mutex::new(Vec::new()));
+            let exit_commands = external.clone();
             let ctx2 = cc.egui_ctx.clone();
             ipc::start(cli.instance.clone(), Arc::new(ipc::IpcContext {
                 index: engine.index.clone(),
                 elevated,
                 db_loaded: engine.db_loaded.clone(),
                 on_exit: Box::new(move || {
-                    eng2.stop_and_save();
-                    std::process::exit(0);
+                    exit_commands.lock().push(ipc::ExternalCommand::Exit);
+                    winshow::request_close();
                 }),
                 external: external.clone(),
                 repaint: Arc::new(move || ctx2.request_repaint()),

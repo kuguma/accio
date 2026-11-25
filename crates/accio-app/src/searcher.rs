@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 pub struct Searcher {
-    pending: Mutex<Option<Request>>,
+    pending: Mutex<Option<(u64, Request)>>,
     cv: Condvar,
     gen: AtomicU64,
     pub result: ArcSwapOption<Response>,
@@ -32,14 +32,13 @@ impl Searcher {
         std::thread::Builder::new()
             .name("search".into())
             .spawn(move || loop {
-                let req = {
+                let (my_gen, req) = {
                     let mut p = worker.pending.lock();
                     while p.is_none() {
                         worker.cv.wait(&mut p);
                     }
                     p.take().unwrap()
                 };
-                let my_gen = worker.gen.load(Ordering::Acquire);
                 worker.busy.store(1, Ordering::Relaxed);
                 let vols = index.snapshot();
                 let idx_gen = index_gen.load(Ordering::Relaxed);
@@ -48,8 +47,11 @@ impl Searcher {
                 // 検索の panic で検索スレッドを失わない（索引の不整合は検索結果なしとして扱い、ログに残る）
                 let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| search(&vols, &req, &cancel)));
                 if let Ok(Some(r)) = outcome {
-                    worker.result.store(Some(Arc::new(r)));
-                    worker.result_gen.store(idx_gen, Ordering::Relaxed);
+                    let _pending = worker.pending.lock();
+                    if !cancel() {
+                        worker.result.store(Some(Arc::new(r)));
+                        worker.result_gen.store(idx_gen, Ordering::Relaxed);
+                    }
                 }
                 worker.busy.store(0, Ordering::Relaxed);
                 repaint();
@@ -60,8 +62,15 @@ impl Searcher {
 
     /// 最新リクエストに置き換える。実行中の古い検索は次のチャンク境界で打ち切られる。
     pub fn submit(&self, req: Request) {
-        self.gen.fetch_add(1, Ordering::AcqRel);
-        *self.pending.lock() = Some(req);
+        let mut pending = self.pending.lock();
+        let generation = self.gen.fetch_add(1, Ordering::AcqRel) + 1;
+        *pending = Some((generation, req));
         self.cv.notify_one();
+    }
+
+    pub fn cancel(&self) {
+        let mut pending = self.pending.lock();
+        self.gen.fetch_add(1, Ordering::AcqRel);
+        *pending = None;
     }
 }

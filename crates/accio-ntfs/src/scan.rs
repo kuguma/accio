@@ -18,11 +18,13 @@ pub struct ScanOptions {
     /// このスキャン専用のスレッド数。グローバルな rayon プールは使わない
     /// （`sink` がロック待ちでブロックしてもプール全体を巻き込まないようにするため）。
     pub threads: usize,
+    /// Called once on each scan worker before it performs any work.
+    pub worker_init: Option<fn()>,
 }
 
 impl Default for ScanOptions {
     fn default() -> Self {
-        Self { chunk_bytes: 32 << 20, threads: 4 }
+        Self { chunk_bytes: 32 << 20, threads: 4, worker_init: None }
     }
 }
 
@@ -188,7 +190,16 @@ pub fn scan_mft<R: PositionalRead + ?Sized>(
     let parser = MftRecordParser::new(&boot);
     progress(0, total);
 
-    let pool = rayon::ThreadPoolBuilder::new().num_threads(opts.threads.max(1)).thread_name(|i| format!("mft-scan-{i}")).build()?;
+    let worker_init = opts.worker_init;
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(opts.threads.max(1))
+        .thread_name(|i| format!("mft-scan-{i}"))
+        .start_handler(move |_| {
+            if let Some(init) = worker_init {
+                init();
+            }
+        })
+        .build()?;
     let result: Result<()> = pool.install(|| jobs.par_iter().try_for_each(|&(logical, len)| {
         if cancel.load(Ordering::Relaxed) {
             return Err(anyhow!("cancelled"));

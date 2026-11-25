@@ -14,7 +14,7 @@ fn scans_test_image() {
     let r = FileReader::open_path(&image()).unwrap();
     let all = Mutex::new(Vec::<MftEntry>::new());
     let cancel = AtomicBool::new(false);
-    let stats = scan_mft(&r, &ScanOptions { chunk_bytes: 4096, threads: 2 }, &cancel, &|_, _| {}, &|v| all.lock().unwrap().extend(v)).unwrap();
+    let stats = scan_mft(&r, &ScanOptions { chunk_bytes: 4096, threads: 2, ..Default::default() }, &cancel, &|_, _| {}, &|v| all.lock().unwrap().extend(v)).unwrap();
     let all = all.into_inner().unwrap();
     assert!(stats.total_records >= 16 + 517);
     let by_name = |n: &str| all.iter().find(|e| e.names.iter().any(|x| x.name == n)).cloned();

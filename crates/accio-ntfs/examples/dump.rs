@@ -4,7 +4,7 @@ fn main() {
     let p = std::env::args().nth(1).unwrap();
     let r = FileReader::open_path(std::path::Path::new(&p)).unwrap();
     let all = Mutex::new(Vec::new());
-    let st = scan_mft(&r, &ScanOptions { chunk_bytes: 4096, threads: 2 }, &AtomicBool::new(false), &|_, _| {}, &|v| all.lock().unwrap().extend(v)).unwrap();
+    let st = scan_mft(&r, &ScanOptions { chunk_bytes: 4096, threads: 2, ..Default::default() }, &AtomicBool::new(false), &|_, _| {}, &|v| all.lock().unwrap().extend(v)).unwrap();
     let mut all = all.into_inner().unwrap();
     all.sort_by_key(|e| e.record);
     println!("{st:?} entries={}", all.len());

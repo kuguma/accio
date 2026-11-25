@@ -102,6 +102,7 @@ pub struct Engine {
     /// 変更が落ち着いてから保存するまでの時間
     pub save_settle: Duration,
     pub journal: Arc<Mutex<Journal>>,
+    maintenance: crate::background::Maintenance,
     data_dir: PathBuf,
     pub elevated: bool,
     started: Instant,
@@ -161,6 +162,7 @@ impl Engine {
             follow_indexer,
             save_settle,
             journal: Arc::new(Mutex::new(Journal::new())),
+            maintenance: crate::background::Maintenance::new(),
             data_dir,
             elevated,
             started: Instant::now(),
@@ -188,6 +190,7 @@ impl Engine {
         let h = std::thread::Builder::new()
             .name("discover".into())
             .spawn(move || {
+                crate::background::enter();
                 me.status.lock().discovering = true;
                 let vols = discover_volumes(Duration::from_secs(5));
                 {
@@ -208,6 +211,9 @@ impl Engine {
                 (me.repaint)();
                 let mut handles = Vec::new();
                 for (i, v) in vols.into_iter().enumerate() {
+                    if me.shutdown.load(Ordering::Relaxed) {
+                        break;
+                    }
                     let me2 = me.clone();
                     handles.push(
                         std::thread::Builder::new()
@@ -219,7 +225,10 @@ impl Engine {
                 me.workers.lock().extend(handles);
                 if me.follow_indexer {
                     let me3 = me.clone();
-                    std::thread::Builder::new().name("watch-data-dir".into()).spawn(move || me3.watch_data_dir()).ok();
+                    std::thread::Builder::new().name("watch-data-dir".into()).spawn(move || {
+                        crate::background::enter();
+                        me3.watch_data_dir();
+                    }).ok();
                 }
                 // フォルダ索引
                 let folders: Vec<String> = me.folders.lock().clone();
@@ -237,6 +246,7 @@ impl Engine {
 
     /// フォルダ索引のライフサイクル: 走査 → 変更監視（ReadDirectoryChangesW）→ 変更が落ち着いたら再走査して差し替え。
     fn run_folder(self: Arc<Self>, slot: usize, root: String) {
+        crate::background::enter();
         use windows_sys::Win32::Foundation::{GENERIC_READ, INVALID_HANDLE_VALUE};
         use windows_sys::Win32::Storage::FileSystem::{
             CreateFileW, ReadDirectoryChangesW, FILE_FLAG_BACKUP_SEMANTICS, FILE_LIST_DIRECTORY, FILE_NOTIFY_CHANGE_ATTRIBUTES,
@@ -248,7 +258,7 @@ impl Engine {
             // インデクサが保存したフォルダ索引を読むだけ（更新は watch_data_dir が拾う）
             let path = self.folder_store_path(&root);
             self.set_state(slot, |s| s.state = VolState::Loading);
-            match store::load(&path) {
+            match self.load_store(&path) {
                 Ok(v) => {
                     let n = v.live_count();
                     let shared = Arc::new(RwLock::new(v));
@@ -259,13 +269,15 @@ impl Engine {
                     });
                     self.mark_ready();
                     self.bump();
-                    self.build_name_order(&shared);
                 }
                 Err(e) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::trf("索引なし: {}", &[&e]))),
             }
             return;
         }
-        let scan = |me: &Arc<Self>, current: &Mutex<Option<SharedVolume>>| {
+        let scan = |me: &Arc<Self>, current: &Mutex<Option<SharedVolume>>| me.maintenance.run(|| {
+            if me.shutdown.load(Ordering::Relaxed) {
+                return;
+            }
             me.set_state(slot, |s| s.state = VolState::Scanning { done: 0, total: 1 });
             let t = Instant::now();
             let progress = |n: usize| {
@@ -306,7 +318,7 @@ impl Engine {
                     me.set_state(slot, |s| s.state = VolState::Error(format!("{e}")));
                 }
             }
-        };
+        });
         scan(&self, &current);
         if current.lock().is_none() {
             return;
@@ -319,7 +331,11 @@ impl Engine {
             std::thread::Builder::new()
                 .name(format!("folder-rescan {root2}"))
                 .spawn(move || {
-                    let scan = |me: &Arc<Self>, current: &Mutex<Option<SharedVolume>>| {
+                    crate::background::enter();
+                    let scan = |me: &Arc<Self>, current: &Mutex<Option<SharedVolume>>| me.maintenance.run(|| {
+                        if me.shutdown.load(Ordering::Relaxed) {
+                            return;
+                        }
                         let t = Instant::now();
                         if let Ok(mut v) = accio_index::folder::scan_folder(&root2, &me.shutdown, &|_| {}) {
                             v.order_name = v.compute_name_order();
@@ -339,7 +355,7 @@ impl Engine {
                             me.bump();
                             log::info!("{root2}: 定期再走査 {:.2}s, {n} entries", t.elapsed().as_secs_f64());
                         }
-                    };
+                    });
                     let mut last = Instant::now();
                     while !me.shutdown.load(Ordering::Relaxed) {
                         std::thread::sleep(Duration::from_secs(5));
@@ -412,7 +428,7 @@ impl Engine {
     /// 索引ファイルを読み込み、同じ guid_path のボリュームがあれば差し替え、無ければ追加する（追従モード）。
     fn reload_file(self: &Arc<Self>, path: &std::path::Path) {
         let t = Instant::now();
-        let v = match store::load(path) {
+        let v = match self.load_store(path) {
             Ok(v) => v,
             Err(e) => {
                 log::warn!("{}: 再読込失敗: {e}", path.display());
@@ -443,7 +459,6 @@ impl Engine {
         log::info!("{root}: 索引ファイルを再読込 {:.2}s, {n} entries", t.elapsed().as_secs_f64());
         self.mark_ready();
         self.bump();
-        self.build_name_order(&shared);
     }
 
     /// 追従モード: データディレクトリの *.accio の更新を監視して再読込する。
@@ -485,11 +500,15 @@ impl Engine {
 
     /// 1 ボリュームのライフサイクル。
     fn run_volume(self: Arc<Self>, slot: usize, info: VolumeInfo) {
+        crate::background::enter();
+        if self.shutdown.load(Ordering::Relaxed) {
+            return;
+        }
         let device = info.device_path();
         if !self.elevated {
             let path = self.store_path(&info);
             self.set_state(slot, |s| s.state = VolState::Loading);
-            match store::load(&path) {
+            match self.load_store(&path) {
                 Ok(v) if v.meta.guid_path == info.guid_path => {
                     let n = v.live_count();
                     let shared = Arc::new(RwLock::new(v));
@@ -500,7 +519,6 @@ impl Engine {
                     });
                     self.mark_ready();
                     self.bump();
-                    self.build_name_order(&shared);
                 }
                 Ok(_) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::tr("索引ファイルのボリューム不一致").into())),
                 Err(e) => self.set_state(slot, |s| s.state = VolState::Error(crate::i18n::trf("索引なし: {}", &[&e]))),
@@ -531,7 +549,7 @@ impl Engine {
         if path.exists() {
             self.set_state(slot, |s| s.state = VolState::Loading);
             let t = Instant::now();
-            match store::load(&path) {
+            match self.load_store(&path) {
                 Ok(v) if v.meta.guid_path == info.guid_path => {
                     let usable = v.meta.journal_id == jstate.journal_id && v.meta.next_usn >= jstate.first_usn && v.meta.next_usn <= jstate.next_usn;
                     log::info!("{}: 索引読み込み {:.2}s, {} entries, usable={}", info.display_root(), t.elapsed().as_secs_f64(), v.len(), usable);
@@ -545,7 +563,6 @@ impl Engine {
                         });
                         self.mark_ready();
                         self.bump();
-                        self.build_name_order(&shared);
                         current = Some(shared);
                     } else {
                         log::warn!("{}: USN ジャーナルが巻き戻った/変わったため再スキャン", info.display_root());
@@ -592,7 +609,7 @@ impl Engine {
 
         // 3. USN 監視ループ
         let mut vol = current.unwrap();
-        let mut buf = vec![0u8; 4 << 20];
+        let mut buf = vec![0u8; 256 << 10];
         let mut last_save = Instant::now();
         let mut dirty = false;
         let mut idle_ticks = 0u32;
@@ -604,7 +621,8 @@ impl Engine {
                 (g.meta.journal_id, g.meta.next_usn)
             };
             let mut applied_any = false;
-            loop {
+            let cycle_started = Instant::now();
+            while !self.shutdown.load(Ordering::Relaxed) {
                 let cur = vol.read().meta.next_usn;
                 match journal.read(jid, start.max(cur), &mut buf) {
                     Ok((next, events)) => {
@@ -641,7 +659,7 @@ impl Engine {
                                 s.last_change = Some(Instant::now());
                             });
                         }
-                        if events.len() < 1000 {
+                        if events.len() < 1000 || cycle_started.elapsed() >= Duration::from_millis(20) {
                             break;
                         }
                     }
@@ -737,6 +755,15 @@ impl Engine {
 
     /// 名前順の順列をバックグラウンドで計算して格納する（ソート中は読み取りロックのみ）。
     fn build_name_order(&self, vol: &SharedVolume) {
+        self.maintenance.run(|| {
+            if self.shutdown.load(Ordering::Relaxed) {
+                return;
+            }
+            self.build_name_order_inner(vol);
+        });
+    }
+
+    fn build_name_order_inner(&self, vol: &SharedVolume) {
         let t = Instant::now();
         let (order, n) = {
             let g = vol.read();
@@ -759,6 +786,10 @@ impl Engine {
     }
 
     fn save_volume(&self, vol: &SharedVolume, path: &std::path::Path) {
+        self.maintenance.run(|| self.save_volume_inner(vol, path));
+    }
+
+    fn save_volume_inner(&self, vol: &SharedVolume, path: &std::path::Path) {
         let t = Instant::now();
         // 書き込みロックは compact（溢れた名前があるときだけ）と ID 表の書き戻しの間だけ。
         // 列の複製は読み取りロック（0.3 秒程度）、圧縮と書き出し（数秒）はロック外で行う
@@ -783,6 +814,13 @@ impl Engine {
     /// MFT をフルスキャンして新しいボリューム索引を作り、`replace_target` があれば差し替える。
     /// スキャン中も新索引は検索対象に入る（到着済み分だけヒットする）。
     fn full_scan(&self, slot: usize, info: &VolumeInfo, journal: &UsnJournal, replace_target: Option<&SharedVolume>) -> anyhow::Result<SharedVolume> {
+        self.maintenance.run(|| {
+            anyhow::ensure!(!self.shutdown.load(Ordering::Relaxed), "cancelled");
+            self.full_scan_inner(slot, info, journal, replace_target)
+        })
+    }
+
+    fn full_scan_inner(&self, slot: usize, info: &VolumeInfo, journal: &UsnJournal, replace_target: Option<&SharedVolume>) -> anyhow::Result<SharedVolume> {
         if info.fs_name == "ReFS" {
             return self.refs_scan(slot, info, journal, replace_target);
         }
@@ -846,7 +884,8 @@ impl Engine {
                 self.bump();
             }
         };
-        let stats = scan_mft(&reader, &ScanOptions::default(), &cancel, &progress, &|batch| builder.push_batch(batch))?;
+        let opts = ScanOptions { chunk_bytes: 4 << 20, threads: 1, worker_init: Some(crate::background::enter) };
+        let stats = scan_mft(&reader, &opts, &cancel, &progress, &|batch| builder.push_batch(batch))?;
         let vol = builder.finish();
         let n = vol.read().live_count();
         log::info!("{}: MFT スキャン {:.2}s, {} records → {} entries", info.display_root(), t.elapsed().as_secs_f64(), stats.total_records, n);
@@ -923,11 +962,32 @@ impl Engine {
         Ok(vol)
     }
 
+    fn load_store(&self, path: &std::path::Path) -> anyhow::Result<accio_index::volume::VolumeIndex> {
+        self.maintenance.run(|| {
+            anyhow::ensure!(!self.shutdown.load(Ordering::Relaxed), "cancelled");
+            let mut v = store::load(path)?;
+            anyhow::ensure!(!self.shutdown.load(Ordering::Relaxed), "cancelled");
+            // Sort before publishing: a low-priority reader must not hold the
+            // live volume lock while a journal writer queues ahead of searches.
+            let t = Instant::now();
+            v.order_name = v.compute_name_order();
+            v.order_covers = v.len();
+            log::info!("{}: 名前順の順列 {} 件 {:.2}s", v.meta.display_root, v.len(), t.elapsed().as_secs_f64());
+            Ok(v)
+        })
+    }
+
     pub fn stop_and_save(&self) {
         self.shutdown.store(true, Ordering::Relaxed);
-        let handles: Vec<_> = self.workers.lock().drain(..).collect();
-        for h in handles {
-            let _ = h.join();
+        // Discovery may publish volume handles while we are joining it.
+        loop {
+            let handles: Vec<_> = self.workers.lock().drain(..).collect();
+            if handles.is_empty() {
+                break;
+            }
+            for h in handles {
+                let _ = h.join();
+            }
         }
     }
 }
